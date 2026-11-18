@@ -1300,6 +1300,25 @@ namespace Trails
 			return 0;
 		}
 
+		// an attack data's name without its hand: "attackPowerStartInPlaceLeftHand" -> "attackpowerstartinplace"
+		std::string MoveOf(const RE::BGSAttackData* a_data)
+		{
+			std::string name = a_data && a_data->event.c_str() ? a_data->event.c_str() : "";
+			std::ranges::transform(name, name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			for (const auto word : { "lefthand", "left_hand", "righthand", "right_hand" }) {
+				if (const auto at = name.find(word); at != std::string::npos) {
+					name.erase(at, std::string_view(word).size());
+				}
+			}
+			for (const auto end : { "_lh", "_rh", "lh", "rh" }) {
+				if (name.ends_with(end)) {
+					name.resize(name.size() - std::string_view(end).size());
+					break;
+				}
+			}
+			return name;
+		}
+
 		void UpdateAttack(Tracked& a_t, RE::Actor* a_actor, float a_dt, bool a_drawn)
 		{
 			const auto signals = Attacks::Take(a_t.formID);
@@ -1358,7 +1377,17 @@ namespace Trails
 						data && data->event.c_str() ? data->event.c_str() : "none", dataPower ? "power" : "not power");
 				}
 			};
-			const bool next = a_t.attack && now - a_t.startedAt > 0.12f && (signals.attackStart || drawStarted || dataChanged);
+			// The attack data switching to the other hand's version of the same move before the attack struck (For Honor
+			// style dual power attacks: attackPowerStartInPlace, then ...LeftHand for the same swing) is one move with
+			// both weapons, not the next attack. After a hit it is the next attack of a combo.
+			const bool otherHand = dataChanged && a_t.attack && previousData && !a_t.sawHit && MoveOf(previousData) == MoveOf(data);
+			if (otherHand) {
+				a_t.nameHands = 3;
+				if (Debug()) {
+					logs::info("{:08X}: attack {} strikes with both hands (its attack data turned to {})", a_t.formID, a_t.attack, data->event.c_str());
+				}
+			}
+			const bool next = a_t.attack && now - a_t.startedAt > 0.12f && (signals.attackStart || drawStarted || (dataChanged && !otherHand));
 			const bool begin = a_drawn && (!a_t.attack ? (melee || signals.attackStart) : next);
 			if (begin) {
 				if (a_t.attack) {
