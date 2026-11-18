@@ -36,6 +36,7 @@ namespace Trails
 		constexpr float kStrikeShare = 0.45f;   // of a hand's usual strike speed: slower is a wind-up, not a swing
 		constexpr float kFirstStrike = 1500.0f; // the usual strike speed before one was seen
 		constexpr float kLeadShare = 0.5f;      // with a weapon in each hand, the one that strikes is at least twice as fast
+		constexpr float kPairShare = 0.6f;      // both strike when the second is at least this share as fast (attacks naming no hand)
 		constexpr float kMinSpeed = 450.0f;     // the least tip speed (units/s, against the body) a swing's trail needs
 
 		constexpr float kArrowMinSpeed = 700.0f;  // an arrow slower than this stuck in something (or something carries it)
@@ -449,7 +450,7 @@ namespace Trails
 			std::uint32_t attack;  // the attack it was taken in, 0 = none
 			bool          window;  // inside a swing window
 			bool          lead;    // this hand moved at least half as fast as the other one (or there is no other)
-			bool          strong;  // at least twice as fast as the other one (or there is no other): it is the one striking
+			bool          strong;  // keeps up with the other hand (kPairShare of its speed, or there is no other): a two-weapon swing
 			bool          emitted;  // its stretch of the swing laid its particles
 		};
 
@@ -1555,8 +1556,8 @@ namespace Trails
 			auto& ls = l.history.back();
 			rs.lead = rs.speed >= ls.speed * kLeadShare;
 			ls.lead = ls.speed >= rs.speed * kLeadShare;
-			rs.strong = rs.speed >= ls.speed * 2.0f;
-			ls.strong = ls.speed >= rs.speed * 2.0f;
+			rs.strong = rs.speed >= ls.speed * kPairShare;
+			ls.strong = ls.speed >= rs.speed * kPairShare;
 		}
 
 		// how much a sample's moment of the swing shows (0..1)
@@ -1569,8 +1570,8 @@ namespace Trails
 			if (!past || !(tuning.normalAttacks || past->power)) {
 				return 0.0f;
 			}
-			// the hands the attack names strike; unnamed (combat frameworks name their attacks their own way), a hand
-			// clearly faster than the other strikes too, whatever its swing events said
+			// the hands the attack names strike; unnamed (combat frameworks name their attacks their own way), the hand
+			// of the swing events strikes, and the other one too when it keeps up with it (a swing with both weapons)
 			if (!(past->hands & (a_h.left ? 2 : 1)) && (past->named || !a_s.strong)) {
 				return 0.0f;
 			}
