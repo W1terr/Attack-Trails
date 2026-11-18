@@ -449,6 +449,7 @@ namespace Trails
 			std::uint32_t attack;  // the attack it was taken in, 0 = none
 			bool          window;  // inside a swing window
 			bool          lead;    // this hand moved at least half as fast as the other one (or there is no other)
+			bool          strong;  // at least twice as fast as the other one (or there is no other): it is the one striking
 			bool          emitted;  // its stretch of the swing laid its particles
 		};
 
@@ -529,6 +530,7 @@ namespace Trails
 				std::uint32_t attack{ 0 };
 				bool          power{ false };
 				std::uint8_t  hands{ 3 };
+				bool          named{ false };  // the hands come from the attack data's name (else from swing events or a guess)
 			};
 			std::array<Past, 8> past{};
 			std::size_t         pastNext{ 0 };
@@ -571,7 +573,7 @@ namespace Trails
 			}
 			auto& p = a_t.past[a_t.pastNext];
 			a_t.pastNext = (a_t.pastNext + 1) % a_t.past.size();
-			p = { a_t.attack, false, 3 };
+			p = { a_t.attack, false, 3, false };
 			return p;
 		}
 
@@ -1272,8 +1274,8 @@ namespace Trails
 			a_t.windowUntil = std::min(a_t.windowUntil, now);
 		}
 
-		// the hands an attack data names: "...LeftHand" the left, "...DualWield" both, else the right. A bare "Left"
-		// is the way the attack goes (attackPowerStartLeft: the power attack while moving left), not the hand.
+		// the hands an attack data names: "...LeftHand" the left, "...DualWield" both, "...RightHand" the right, else
+		// none (0). A bare "Left" is the way the attack goes (attackPowerStartLeft: the power attack while moving left).
 		std::uint8_t HandsNamed(const RE::BGSAttackData* a_data)
 		{
 			const char* name = a_data ? a_data->event.c_str() : nullptr;
@@ -1282,12 +1284,18 @@ namespace Trails
 			}
 			std::string lower(name);
 			std::ranges::transform(lower, lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			if (lower.find("dual") != std::string::npos) {
+			const auto has = [&](const char* a_word) { return lower.find(a_word) != std::string::npos; };
+			if (has("dual")) {
 				return 3;
 			}
-			const bool leftHand = lower.find("lefthand") != std::string::npos || lower.find("left_hand") != std::string::npos ||
-			                      lower.ends_with("_lh") || lower.ends_with("lh");
-			return leftHand ? 2 : 1;
+			if (has("lefthand") || has("left_hand") || lower.ends_with("_lh") || lower.ends_with("lh")) {
+				return 2;
+			}
+			if (has("righthand") || has("right_hand") || lower.ends_with("_rh") || lower.ends_with("rh")) {
+				return 1;
+			}
+			// vanilla right hand attacks ("attackStart", "attackPowerStartForward") name no hand: the swing events tell
+			return 0;
 		}
 
 		void UpdateAttack(Tracked& a_t, RE::Actor* a_actor, float a_dt, bool a_drawn)
@@ -1405,7 +1413,9 @@ namespace Trails
 				a_t.noneFor += a_dt;
 			}
 			a_t.eventHands |= (signals.swingRight ? 1 : 0) | (signals.swingLeft ? 2 : 0) | signals.collisionAdd;
-			CurrentPast(a_t).hands = a_t.nameHands ? a_t.nameHands : a_t.eventHands ? a_t.eventHands : 3;
+			auto& past = CurrentPast(a_t);
+			past.hands = a_t.nameHands ? a_t.nameHands : a_t.eventHands ? a_t.eventHands : 3;
+			past.named = a_t.nameHands != 0;
 
 			// the swing window
 			if (signals.precision) {
@@ -1515,6 +1525,7 @@ namespace Trails
 			s.attack = a_t.attack;
 			s.window = now < a_t.windowUntil;
 			s.lead = true;
+			s.strong = true;
 			const Vec tip = s.pos + Rotate(s.rot, a_h.axis * (a_h.reach * s.scale));
 			if (!a_h.history.empty()) {
 				const auto& last = a_h.history.back();
@@ -1544,6 +1555,8 @@ namespace Trails
 			auto& ls = l.history.back();
 			rs.lead = rs.speed >= ls.speed * kLeadShare;
 			ls.lead = ls.speed >= rs.speed * kLeadShare;
+			rs.strong = rs.speed >= ls.speed * 2.0f;
+			ls.strong = ls.speed >= rs.speed * 2.0f;
 		}
 
 		// how much a sample's moment of the swing shows (0..1)
@@ -1553,7 +1566,12 @@ namespace Trails
 				return 0.0f;
 			}
 			const auto past = PastOf(a_t, a_s.attack);
-			if (!past || !(tuning.normalAttacks || past->power) || !(past->hands & (a_h.left ? 2 : 1))) {
+			if (!past || !(tuning.normalAttacks || past->power)) {
+				return 0.0f;
+			}
+			// the hands the attack names strike; unnamed (combat frameworks name their attacks their own way), a hand
+			// clearly faster than the other strikes too, whatever its swing events said
+			if (!(past->hands & (a_h.left ? 2 : 1)) && (past->named || !a_s.strong)) {
 				return 0.0f;
 			}
 			const float threshold = std::max(kMinSpeed, a_h.strikeSpeed * kStrikeShare);
