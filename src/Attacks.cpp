@@ -50,8 +50,16 @@ namespace Attacks
 		}
 	}
 
-	Class Classify(std::string_view a_tag)
+	Class Classify(std::string_view a_tag, std::string_view a_payload)
 	{
+		// MCO / BFCO attack clips set their attack speed and next attacks when they begin, and end with a recovery: the
+		// marks between one attack and the next (two strikes inside one clip are one attack)
+		if (Same(a_tag, "PIE") && !a_payload.empty()) {
+			const auto payload = Lowered(a_payload);
+			if (Has(payload, { "attackspeed", "nextattack", "nextpowerattack" })) {
+				return Class::kClipEdge;
+			}
+		}
 		if (Same(a_tag, "weaponSwing") || Same(a_tag, "weaponLeftSwing")) {
 			return Class::kSwing;
 		}
@@ -81,6 +89,9 @@ namespace Attacks
 			return Class::kPowerStart;
 		}
 		const auto lower = Lowered(a_tag);
+		if (Has(lower, { "recovery" })) {
+			return Class::kClipEdge;  // MCO_Recovery, BFCO_Recovery...
+		}
 		// frameworks name their own: "MCO_PowerAttack...", "BFCO_PowerAttack...", "BFCO_NextIsPowerAttack",
 		// "PowerAttack_Start...", "SCAR_AttackPower...", heavy attacks of For Honor style combat; ends and exits don't
 		// start one
@@ -110,7 +121,7 @@ namespace Attacks
 					return RE::BSEventNotifyControl::kContinue;
 				}
 				const std::string_view tag(a_event->tag.c_str());
-				const auto             kind = Classify(tag);
+				const auto             kind = Classify(tag, a_event->payload.c_str() ? std::string_view(a_event->payload.c_str()) : std::string_view{});
 				if (kind == Class::kNone) {
 					return RE::BSEventNotifyControl::kContinue;
 				}
@@ -158,6 +169,9 @@ namespace Attacks
 					}
 				case Class::kCollisionRemove:
 					s.collisionRemove = true;
+					break;
+				case Class::kClipEdge:
+					s.clipEdge = true;
 					break;
 				default:
 					break;

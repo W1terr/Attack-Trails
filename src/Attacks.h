@@ -21,6 +21,7 @@ namespace Attacks
 		kPrecision,    // Collision_AttackStart / Collision_Start: the animation times its own hits (Precision annotations)
 		kCollisionAdd,     // Collision_Add: a hit window opens
 		kCollisionRemove,  // Collision_Remove / Collision_AttackEnd / Collision_Cancel: it closes
+		kClipEdge,         // a framework's attack clip begins or ends (MCO / BFCO: its attack speed set at the start, recovery)
 	};
 
 	struct Signals
@@ -38,11 +39,13 @@ namespace Attacks
 		std::uint8_t  collisionAdd{ 0 };        // the hands a Collision_Add opened (1 right, 2 left)
 		float         collisionDuration{ 0.0f };  // its Duration(), 0: until Collision_Remove
 		bool          collisionRemove{ false };
+		bool          clipEdge{ false };
 
-		bool Any() const { return powerStart || attackStart || swing || preHit || hit || stop || precision || collisionAdd || collisionRemove; }
+		bool Any() const { return powerStart || attackStart || swing || preHit || hit || stop || precision || collisionAdd || collisionRemove || clipEdge; }
 	};
 
-	Class Classify(std::string_view a_tag);
+	// a_payload: the text after the event's first dot (payload interpreter events "PIE.@SGVF|MCO_AttackSpeed|1")
+	Class Classify(std::string_view a_tag, std::string_view a_payload = {});
 
 	// adds the event sink to the actor's animation graphs (again when it got a new 3D); false if it has none
 	bool Watch(RE::Actor* a_actor);

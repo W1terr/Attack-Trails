@@ -524,6 +524,7 @@ namespace Trails
 			const RE::BGSAttackData*  beginData{ nullptr };  // what it was when the attack running began
 			bool                      sawDraw{ false };      // the attack running went through the game's wind-up
 			float                     powerEventAt{ -100.0f };  // the latest power attack event
+			float                     edgeAt{ -100.0f };        // the latest sign of an attack beginning or ending (start events, clip edges)
 
 			// the latest attacks: power attack or not, the hands that strike
 			struct Past
@@ -1369,12 +1370,17 @@ namespace Trails
 			if (signals.powerStart) {
 				a_t.powerEventAt = now;
 			}
+			if (signals.attackStart || signals.clipEdge) {
+				a_t.edgeAt = now;
+			}
 
 			// A framework's chained swings: an attack that never went through the game's own start swings again after its
-			// last swing's hit window closed. The new swing is the next attack, and it has to show it is a power attack
-			// itself (a power event since the last swing, or attack data of its own).
+			// last swing's hit window closed, and its clip ended or the next one began since (MCO recovery, attack start
+			// marks). The new swing is the next attack, and it has to show it is a power attack itself (a power event since
+			// the last swing, or attack data of its own). Without such a mark it is the next strike of the same clip (the
+			// second weapon of a two-weapon power attack) and stays part of its attack.
 			const bool swingNow = signals.swing || signals.preHit || signals.hit || signals.collisionAdd;
-			if (a_drawn && swingNow && a_t.attack && a_t.sawWindow && !a_t.sawDraw && now >= a_t.windowUntil) {
+			if (a_drawn && swingNow && a_t.attack && a_t.sawWindow && !a_t.sawDraw && now >= a_t.windowUntil && a_t.edgeAt >= a_t.windowUntil) {
 				const auto  old = a_t.attack;
 				const float closed = a_t.windowUntil;
 				EndAttack(a_t, "its next swing began");
