@@ -510,7 +510,6 @@ namespace Trails
 			bool          sawWindow{ false };  // it sent swing / hit events
 			float         windowUntil{ -1.0f };
 			bool          precision{ false };  // the attack's animation times its hits with Precision annotations
-			bool          sawSwing{ false };   // its swing event came (weaponSwing / preHitFrame)
 			float         swingAt{ -1.0f };    // when, while its hit hasn't come (-1: no swing waiting)
 			bool          sawHit{ false };
 			std::uint8_t  nameHands{ 0 };       // the hands its attack data names (1 right, 2 left), 0 = unknown
@@ -1363,7 +1362,6 @@ namespace Trails
 				a_t.noneFor = 0.0f;
 				a_t.sawWindow = false;
 				a_t.precision = false;
-				a_t.sawSwing = false;
 				a_t.swingAt = -1.0f;
 				a_t.sawHit = false;
 				a_t.nameHands = 0;
@@ -1474,7 +1472,6 @@ namespace Trails
 			// with their age, so they look as if they followed the blade). After the hit it goes on live for a moment.
 			if ((signals.swing || signals.preHit) && a_t.swingAt < 0.0f) {
 				a_t.swingAt = now;
-				a_t.sawSwing = true;
 			}
 			if (signals.hit) {
 				MarkStrike(a_t, a_actor, now, "hit");

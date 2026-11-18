@@ -4,6 +4,21 @@ namespace Attacks
 {
 	namespace
 	{
+		enum class Class : std::uint8_t
+		{
+			kNone,
+			kPowerStart,   // a power attack starts
+			kAttackStart,  // an attack starts (power or not)
+			kSwing,        // weaponSwing / weaponLeftSwing: the blade starts its swing
+			kPreHit,       // preHitFrame: shortly before the hit
+			kHit,          // HitFrame: the hit
+			kStop,         // the attack ends or is interrupted
+			kPrecision,    // Collision_AttackStart / Collision_Start: the animation times its own hits (Precision annotations)
+			kCollisionAdd,     // Collision_Add: a hit window opens
+			kCollisionRemove,  // Collision_Remove / Collision_AttackEnd / Collision_Cancel: it closes
+			kClipEdge,         // a framework's attack clip begins or ends (MCO / BFCO: its attack speed set at the start, recovery)
+		};
+
 		std::mutex                              lock;  // the queue
 		std::unordered_map<RE::FormID, Signals> queued;
 
@@ -48,64 +63,61 @@ namespace Attacks
 			const auto to = a_lowerPayload.find(')', from);
 			return a_lowerPayload.substr(from, to == std::string::npos ? std::string::npos : to - from);
 		}
-	}
 
-	Class Classify(std::string_view a_tag, std::string_view a_payload)
-	{
-		// MCO / BFCO attack clips set their attack speed and next attacks when they begin, and end with a recovery: the
-		// marks between one attack and the next (two strikes inside one clip are one attack)
-		if (Same(a_tag, "PIE") && !a_payload.empty()) {
-			const auto payload = Lowered(a_payload);
-			if (Has(payload, { "attackspeed", "nextattack", "nextpowerattack" })) {
-				return Class::kClipEdge;
+		Class Classify(std::string_view a_tag, std::string_view a_payload)
+		{
+			// MCO / BFCO attack clips set their attack speed and next attacks when they begin, and end with a recovery: the
+			// marks between one attack and the next (two strikes inside one clip are one attack)
+			if (Same(a_tag, "PIE") && !a_payload.empty()) {
+				const auto payload = Lowered(a_payload);
+				if (Has(payload, { "attackspeed", "nextattack", "nextpowerattack" })) {
+					return Class::kClipEdge;
+				}
 			}
+			if (Same(a_tag, "weaponSwing") || Same(a_tag, "weaponLeftSwing")) {
+				return Class::kSwing;
+			}
+			if (Same(a_tag, "preHitFrame")) {
+				return Class::kPreHit;
+			}
+			if (Same(a_tag, "HitFrame")) {
+				return Class::kHit;
+			}
+			// Precision's annotations (MCO and newer animation packs carry them): the exact hit windows
+			if (Same(a_tag, "Collision_AttackStart") || Same(a_tag, "Collision_Start")) {
+				return Class::kPrecision;
+			}
+			if (Same(a_tag, "Collision_Add")) {
+				return Class::kCollisionAdd;
+			}
+			if (Same(a_tag, "Collision_Remove") || Same(a_tag, "Collision_AttackEnd") || Same(a_tag, "Collision_Cancel")) {
+				return Class::kCollisionRemove;
+			}
+			if (Same(a_tag, "attackStop") || Same(a_tag, "staggerStart") || Same(a_tag, "recoilStart") || Same(a_tag, "recoilLargeStart") ||
+				Same(a_tag, "blockStart") || Same(a_tag, "weaponSheathe") || Same(a_tag, "bleedOutStart") || Same(a_tag, "Ragdoll")) {
+				return Class::kStop;
+			}
+			// vanilla power attacks: attackPowerStartForward, ...InPlace, ...Left, ...Right, ...Backward, _Sprint,
+			// ...DualWield, ...LeftHand
+			if (StartsWith(a_tag, "attackPowerStart")) {
+				return Class::kPowerStart;
+			}
+			const auto lower = Lowered(a_tag);
+			if (Has(lower, { "recovery" })) {
+				return Class::kClipEdge;  // MCO_Recovery, BFCO_Recovery...
+			}
+			// frameworks name their own: "MCO_PowerAttack...", "BFCO_PowerAttack...", "BFCO_NextIsPowerAttack",
+			// "PowerAttack_Start...", "SCAR_AttackPower...", heavy attacks of For Honor style combat; ends and exits don't
+			// start one
+			if (Has(lower, { "powerattack", "power_attack", "attackpower", "attack_power", "pwrattack", "powerstrike", "heavyattack", "heavy_attack" })) {
+				return IsEnding(lower) ? Class::kNone : Class::kPowerStart;
+			}
+			if (StartsWith(a_tag, "attackStart") || (Has(lower, { "attackstart", "attack_start", "attackinitiate" }) && !IsEnding(lower))) {
+				return Class::kAttackStart;
+			}
+			return Class::kNone;
 		}
-		if (Same(a_tag, "weaponSwing") || Same(a_tag, "weaponLeftSwing")) {
-			return Class::kSwing;
-		}
-		if (Same(a_tag, "preHitFrame")) {
-			return Class::kPreHit;
-		}
-		if (Same(a_tag, "HitFrame")) {
-			return Class::kHit;
-		}
-		// Precision's annotations (MCO and newer animation packs carry them): the exact hit windows
-		if (Same(a_tag, "Collision_AttackStart") || Same(a_tag, "Collision_Start")) {
-			return Class::kPrecision;
-		}
-		if (Same(a_tag, "Collision_Add")) {
-			return Class::kCollisionAdd;
-		}
-		if (Same(a_tag, "Collision_Remove") || Same(a_tag, "Collision_AttackEnd") || Same(a_tag, "Collision_Cancel")) {
-			return Class::kCollisionRemove;
-		}
-		if (Same(a_tag, "attackStop") || Same(a_tag, "staggerStart") || Same(a_tag, "recoilStart") || Same(a_tag, "recoilLargeStart") ||
-			Same(a_tag, "blockStart") || Same(a_tag, "weaponSheathe") || Same(a_tag, "bleedOutStart") || Same(a_tag, "Ragdoll")) {
-			return Class::kStop;
-		}
-		// vanilla power attacks: attackPowerStartForward, ...InPlace, ...Left, ...Right, ...Backward, _Sprint,
-		// ...DualWield, ...LeftHand
-		if (StartsWith(a_tag, "attackPowerStart")) {
-			return Class::kPowerStart;
-		}
-		const auto lower = Lowered(a_tag);
-		if (Has(lower, { "recovery" })) {
-			return Class::kClipEdge;  // MCO_Recovery, BFCO_Recovery...
-		}
-		// frameworks name their own: "MCO_PowerAttack...", "BFCO_PowerAttack...", "BFCO_NextIsPowerAttack",
-		// "PowerAttack_Start...", "SCAR_AttackPower...", heavy attacks of For Honor style combat; ends and exits don't
-		// start one
-		if (Has(lower, { "powerattack", "power_attack", "attackpower", "attack_power", "pwrattack", "powerstrike", "heavyattack", "heavy_attack" })) {
-			return IsEnding(lower) ? Class::kNone : Class::kPowerStart;
-		}
-		if (StartsWith(a_tag, "attackStart") || (Has(lower, { "attackstart", "attack_start", "attackinitiate" }) && !IsEnding(lower))) {
-			return Class::kAttackStart;
-		}
-		return Class::kNone;
-	}
 
-	namespace
-	{
 		class EventSink : public RE::BSTEventSink<RE::BSAnimationGraphEvent>
 		{
 		public:
