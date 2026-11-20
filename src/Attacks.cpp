@@ -165,10 +165,11 @@ namespace Attacks
 					break;
 				case Class::kCollisionAdd:
 					{
-						// the node the hit window is on: the right weapon, the left one (SHIELD), else a kick or a bash
+						// the node the hit window is on: the right weapon (or fist), the left one (SHIELD), else a kick or a bash
 						const auto payload = Lowered(a_event->payload.c_str() ? a_event->payload.c_str() : "");
 						const auto node = Parameter(payload, "node");
-						const std::uint8_t hands = node.empty() || node == "weapon" ? 1 : node == "shield" ? 2 : 0;
+						const auto has = [&](const char* a_part) { return node.find(a_part) != std::string::npos; };
+						const std::uint8_t hands = node.empty() || node == "weapon" || has("[rhnd]") ? 1 : node == "shield" || has("[lhnd]") ? 2 : 0;
 						s.precision = true;
 						s.collisionAdd |= hands;
 						if (const auto duration = Parameter(payload, "duration"); !duration.empty()) {

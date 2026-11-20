@@ -16,7 +16,7 @@ LANGUAGES = ["french", "german", "italian", "spanish", "polish", "russian", "jap
 LIT = r'"((?:[^"\\]|\\.)*)"'
 
 # literals in Menu.cpp that are not shown text
-NOT_TEXT = {"Attack Trails", "x", "", "auto", "(?)", "colors", "weapons", "RenameSection",
+NOT_TEXT = {"Attack Trails", "x", "", "auto", "(?)", "colors", "weapons", "enchantments", "RenameSection",
             "SKSEMenuFramework.h", "Menu.h", "Lang.h", "Settings.h", "Trails.h"}
 
 

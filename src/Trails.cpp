@@ -39,6 +39,15 @@ namespace Trails
 		constexpr float kPairShare = 0.6f;      // both strike when the second is at least this share as fast (attacks naming no hand)
 		constexpr float kMinSpeed = 450.0f;     // the least tip speed (units/s, against the body) a swing's trail needs
 
+		// fists: the knuckles strike; a punch travels less and slower than a blade's tip
+		constexpr auto  kRightHand = "NPC R Hand [RHnd]";
+		constexpr auto  kLeftHand = "NPC L Hand [LHnd]";
+		constexpr float kFistMinSpeed = 250.0f;
+		constexpr float kFistFirstStrike = 650.0f;
+		constexpr float kFistMinReach = 3.0f;
+		constexpr float kFistHead = 0.25f;     // dots a little behind the knuckles too
+		constexpr float kFistDensity = 1.6f;   // particles per unit of travel, against a blade's
+
 		constexpr float kArrowMinSpeed = 700.0f;  // an arrow slower than this stuck in something (or something carries it)
 		constexpr float kArrowFlight = 6.0f;      // its trail ends after this long anyway
 		constexpr float kReleaseWindow = 0.6f;    // an arrow that shows up this soon after a shooter let go of the string is theirs
@@ -199,12 +208,23 @@ namespace Trails
 		// the weapon list's entries by the weapons' (loaded) form ids
 		std::unordered_map<RE::FormID, std::size_t> ruleOf;
 
-		void ResolveWeapons()
+		// the enchantment list's entries by their magic effects' (loaded) form ids
+		std::unordered_map<RE::FormID, std::size_t> ruleOfEffect;
+
+		// the weapon and enchantment lists by the loaded forms
+		void ResolveLists()
 		{
 			ruleOf.clear();
+			ruleOfEffect.clear();
 			const auto data = RE::TESDataHandler::GetSingleton();
 			if (!data) {
 				return;
+			}
+			for (std::size_t i = 0; i < tuning.enchantments.size(); ++i) {
+				const auto& rule = tuning.enchantments[i];
+				if (const auto effect = data->LookupForm<RE::EffectSetting>(rule.id, rule.plugin)) {
+					ruleOfEffect.try_emplace(effect->GetFormID(), i);  // the first entry of an effect listed twice
+				}
 			}
 			for (std::size_t i = 0; i < tuning.weapons.size(); ++i) {
 				const auto& rule = tuning.weapons[i];
@@ -226,7 +246,7 @@ namespace Trails
 			}
 			tuning = Settings::Get();
 			tuningRevision = revision;
-			ResolveWeapons();
+			ResolveLists();
 		}
 
 		bool Debug() { return tuning.debugLog; }
@@ -438,6 +458,15 @@ namespace Trails
 			a_item->busy = false;
 		}
 
+		// what an enchantment says about the trail's color: an entry of the enchantment list, or the color it glows with
+		struct Tint
+		{
+			int                       rule{ -1 };  // its entry in the enchantment list
+			bool                      glow{ false };
+			std::array<float, 3>      color{ 1.0f, 1.0f, 1.0f };  // the glow's
+			const RE::EffectSetting*  effect{ nullptr };          // the effect that decided it (the costliest if none did)
+		};
+
 		// ---- the watched actors
 
 		struct Sample
@@ -457,7 +486,9 @@ namespace Trails
 		struct Hand
 		{
 			bool                  left{ false };
-			RE::NiAVObject*       node{ nullptr };  // WEAPON / SHIELD of the root below
+			bool                  fist{ false };    // nothing in it (or a hand-to-hand weapon): the fist strikes
+			float                 minSpeed{ kMinSpeed };
+			RE::NiAVObject*       node{ nullptr };  // WEAPON / SHIELD of the root below (the hand itself for a fist)
 			const RE::NiAVObject* held{ nullptr };  // the model hanging under it, as measured
 			RE::TESObjectWEAP*    weapon{ nullptr };
 			RE::TESObjectWEAP*    looked{ nullptr };  // the weapon this hand holds (a bow too), whose look is below
@@ -468,6 +499,8 @@ namespace Trails
 			int                   rule{ -1 };          // its entry in the weapon list
 			bool                  trailOn{ true };     // the settings let it leave trails
 			std::array<float, 3>  color{ 1.0f, 1.0f, 1.0f };
+			Tint                  tint;
+			std::uint32_t         tuned{ 0 };  // the settings revision the look was worked out with
 
 			// the weapon's shape, in the weapon node's space
 			Vec              axis{ 0.0f, 1.0f, 0.0f };  // hand to its farthest point
@@ -475,6 +508,7 @@ namespace Trails
 			bool             fromVertices{ false };
 			bool             bladeOk{ false };
 			float            measureAgain{ 0.0f };
+			float            findAgain{ 0.0f };  // VR: the next look for the weapon / hand node
 			bool             heavy{ false };  // an axe, mace or hammer: its head strikes, not a tip
 			std::vector<Vec> head;            // points of the part that strikes
 			Vec              headCenter;
@@ -499,6 +533,8 @@ namespace Trails
 			const void*     watchedRoot{ nullptr };  // the 3D the event sink was added with
 			RE::NiNode*     root{ nullptr };          // the skeleton the samples are taken against
 			bool            firstPerson{ false };
+			bool            vr{ false };              // the VR player: hands follow the controllers, swings are the player's own motion
+			bool            vrBowSeen{ false };       // VR: the bow's draw amount was seen moving
 
 			// the attack running (0 = none)
 			std::uint32_t attack{ 0 };
@@ -539,6 +575,14 @@ namespace Trails
 			std::array<Hand, 2> hands{};
 			bool                keep{ true };
 			bool                drawn{ false };
+
+			const RE::TESRace* race{ nullptr };  // the race punches was worked out for
+			bool               punches{ false };
+
+			// the gauntlets worn (they color the fists' trails)
+			RE::TESObjectARMO*   gauntlet{ nullptr };
+			RE::EnchantmentItem* gauntletEnchantment{ nullptr };
+			float                gauntletCheck{ 0.0f };
 
 			// the bow: since when it is drawn (-1: it isn't), since when fully, and the last shot's hold
 			float bowDrawStart{ -1.0f };
@@ -639,6 +683,25 @@ namespace Trails
 			}
 		}
 
+		// Soul traps aren't always made as soul trap effects: the game's own Soul Trap enchantment (EnchSoulTrapFFContact,
+		// "Binding" weapons) is a script effect. Also recognized: that effect itself, and effects that show the soul trap
+		// shader on their target (mods' soul traps made like the game's).
+		RE::EffectSetting*   soulTrapEnchantment{ nullptr };
+		RE::TESEffectShader* soulTrapShader{ nullptr };
+
+		void FindSoulTrapForms()
+		{
+			const auto data = RE::TESDataHandler::GetSingleton();
+			soulTrapEnchantment = data ? data->LookupForm<RE::EffectSetting>(0x05B452, "Skyrim.esm") : nullptr;
+			soulTrapShader = data ? data->LookupForm<RE::TESEffectShader>(0x0506D7, "Skyrim.esm") : nullptr;  // SoulTrapFXShader
+		}
+
+		bool IsSoulTrap(const RE::EffectSetting* a_effect)
+		{
+			return a_effect && (a_effect->GetArchetype() == RE::EffectArchetypes::ArchetypeID::kSoulTrap || (soulTrapEnchantment && a_effect == soulTrapEnchantment) ||
+								   (soulTrapShader && a_effect->data.effectShader == soulTrapShader));
+		}
+
 		Element Classify(const RE::EnchantmentItem* a_enchantment)
 		{
 			if (!a_enchantment) {
@@ -713,9 +776,10 @@ namespace Trails
 				if (!mgef) {
 					continue;
 				}
-				switch (mgef->GetArchetype()) {
-				case Kind::kSoulTrap:
+				if (IsSoulTrap(mgef)) {
 					return Settings::kSoulTrap;
+				}
+				switch (mgef->GetArchetype()) {
 				case Kind::kParalysis:
 					return Settings::kParalysis;
 				case Kind::kDemoralize:
@@ -733,6 +797,90 @@ namespace Trails
 				}
 			}
 			return Settings::kOther;
+		}
+
+		// The color an enchanted item glows with: its effect's enchant shader. Its edge color mostly (armor enchantments:
+		// Fortify Health dark red, Fortify Stamina green...), else a fill or particle color; only a clearly colored one,
+		// brought up to full brightness. Shaders colored by their textures (fire, shock) give white or grey: no glow color.
+		bool Glow(const RE::EffectSetting* a_effect, std::array<float, 3>& a_color)
+		{
+			const auto shader = a_effect ? a_effect->data.enchantShader : nullptr;
+			if (!shader) {
+				return false;
+			}
+			const auto& d = shader->data;
+			float       best = 0.0f;
+			for (const auto& c : { d.edgeEffectColor, d.fillTextureEffectColorKey1, d.fillTextureEffectColorKey2, d.fillTextureEffectColorKey3, d.colorKey1 }) {
+				const float r = c.red / 255.0f, g = c.green / 255.0f, b = c.blue / 255.0f;
+				const float hi = std::max({ r, g, b });
+				const float lo = std::min({ r, g, b });
+				if (hi < 0.08f) {
+					continue;  // black: adds nothing
+				}
+				const float saturation = (hi - lo) / hi;
+				if (saturation >= 0.3f && saturation > best) {
+					best = saturation;
+					a_color = { r / hi, g / hi, b / hi };
+				}
+			}
+			return best > 0.0f;
+		}
+
+		Tint TintOf(const RE::EnchantmentItem* a_enchantment)
+		{
+			Tint t;
+			if (!a_enchantment) {
+				return t;
+			}
+			float ruleCost = -1.0f, glowCost = -1.0f, anyCost = -1.0f;
+			const RE::EffectSetting* glowEffect = nullptr;
+			for (const auto effect : a_enchantment->effects) {
+				const auto mgef = effect ? effect->baseEffect : nullptr;
+				if (!mgef) {
+					continue;
+				}
+				const float cost = std::max(effect->cost, 0.0f) + effect->effectItem.magnitude * 1e-4f;
+				if (const auto found = ruleOfEffect.find(mgef->GetFormID()); found != ruleOfEffect.end() && cost > ruleCost) {
+					ruleCost = cost;
+					t.rule = static_cast<int>(found->second);
+					t.effect = mgef;
+				}
+				std::array<float, 3> c{};
+				if (cost > glowCost && Glow(mgef, c)) {
+					glowCost = cost;
+					t.glow = true;
+					t.color = c;
+					glowEffect = mgef;
+				}
+				if (cost > anyCost) {
+					anyCost = cost;
+					if (t.rule < 0) {
+						t.effect = mgef;
+					}
+				}
+			}
+			if (t.rule < 0 && glowEffect) {
+				t.effect = glowEffect;
+			}
+			return t;
+		}
+
+		// the color before the weapon list: the enchantment list, else the glow (not for bound and ghost weapons, which
+		// have their own), else the kind's
+		std::array<float, 3> BaseColor(Element a_element, const Tint& a_tint)
+		{
+			if (a_tint.rule >= 0) {
+				return tuning.enchantments[static_cast<std::size_t>(a_tint.rule)].color;
+			}
+			if (tuning.glowColors && a_tint.glow && a_element != Settings::kBound && a_element != Settings::kGhost) {
+				return a_tint.color;
+			}
+			return tuning.elements[a_element].color;
+		}
+
+		bool BaseOn(Element a_element, const Tint& a_tint)
+		{
+			return a_tint.rule >= 0 ? tuning.enchantments[static_cast<std::size_t>(a_tint.rule)].trail : tuning.elements[a_element].enabled;
 		}
 
 		// weapons the game deals out as loot: in a leveled list together with weapons of other names (the Drainheart
@@ -802,12 +950,12 @@ namespace Trails
 			int                  rule{ -1 };  // its entry in the weapon list
 		};
 
-		Verdict LookAt(const RE::TESObjectWEAP* a_weapon, Element a_element, bool a_unique)
+		Verdict LookAt(const RE::TESObjectWEAP* a_weapon, Element a_element, bool a_unique, const Tint& a_tint)
 		{
 			Verdict     v;
 			const auto  found = a_weapon ? ruleOf.find(a_weapon->GetFormID()) : ruleOf.end();
-			const auto& element = tuning.elements[a_element];
-			v.color = element.color;
+			const bool  enabled = BaseOn(a_element, a_tint);
+			v.color = BaseColor(a_element, a_tint);
 			if (found != ruleOf.end()) {
 				const auto& rule = tuning.weapons[found->second];
 				v.rule = static_cast<int>(found->second);
@@ -819,13 +967,13 @@ namespace Trails
 			}
 			switch (tuning.weaponFilter) {
 			case Settings::kUniqueWeapons:
-				v.on = a_unique && element.enabled;
+				v.on = a_unique && enabled;
 				break;
 			case Settings::kListedWeapons:
 				v.on = false;
 				break;
 			default:
-				v.on = element.enabled;
+				v.on = enabled;
 				break;
 			}
 			return v;
@@ -833,7 +981,14 @@ namespace Trails
 
 		void Look(Hand& a_h)
 		{
-			const auto v = LookAt(a_h.looked, a_h.element, a_h.unique);
+			if (a_h.fist) {
+				// fists aren't weapons: the weapon filter and list don't apply, only their own switch and the color's
+				a_h.trailOn = tuning.fists && BaseOn(a_h.element, a_h.tint);
+				a_h.color = BaseColor(a_h.element, a_h.tint);
+				a_h.rule = -1;
+				return;
+			}
+			const auto v = LookAt(a_h.looked, a_h.element, a_h.unique, a_h.tint);
 			a_h.trailOn = v.on;
 			a_h.color = v.color;
 			a_h.rule = v.rule;
@@ -936,6 +1091,57 @@ namespace Trails
 				}
 			}
 			return a_weapon ? a_weapon->formEnchanting : nullptr;
+		}
+
+		// a hand with nothing in it, or a hand-to-hand weapon (claws, knuckles)
+		bool IsUnarmed(const RE::TESForm* a_form)
+		{
+			if (!a_form) {
+				return true;
+			}
+			const auto weapon = a_form->As<RE::TESObjectWEAP>();
+			return weapon && weapon->GetWeaponType() == RE::WEAPON_TYPE::kHandToHandMelee;
+		}
+
+		bool HoldsWeapon(const RE::TESForm* a_form)
+		{
+			const auto weapon = a_form ? a_form->As<RE::TESObjectWEAP>() : nullptr;
+			return weapon && weapon->GetWeaponType() != RE::WEAPON_TYPE::kHandToHandMelee;
+		}
+
+		// people punch; creatures and beast forms (werewolves, vampire lords, werebears: no ActorTypeNPC) claw and bite
+		bool CanPunch(Tracked& a_t, RE::Actor* a_actor)
+		{
+			const auto race = a_actor->GetRace();
+			if (race != a_t.race) {
+				a_t.race = race;
+				a_t.punches = race && race->HasKeywordString("ActorTypeNPC");
+			}
+			return a_t.punches;
+		}
+
+		// the gauntlets worn and their enchantment (one you put on them yourself, else their own), once a second
+		void CheckGauntlets(Tracked& a_t, RE::Actor* a_actor)
+		{
+			if (now < a_t.gauntletCheck) {
+				return;
+			}
+			a_t.gauntletCheck = now + 1.0f;
+			a_t.gauntlet = nullptr;
+			a_t.gauntletEnchantment = nullptr;
+			const auto inventory = a_actor->GetInventory([](RE::TESBoundObject& a_object) { return a_object.IsArmor(); });
+			for (const auto& [item, data] : inventory) {
+				const auto& [count, entry] = data;
+				const auto armor = item ? item->As<RE::TESObjectARMO>() : nullptr;
+				if (count > 0 && entry && armor && entry->IsWorn() && armor->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kHands)) {
+					a_t.gauntlet = armor;
+					a_t.gauntletEnchantment = entry->GetEnchantment();
+					if (!a_t.gauntletEnchantment) {
+						a_t.gauntletEnchantment = armor->formEnchanting;
+					}
+					break;
+				}
+			}
 		}
 
 		// the points of a held model, in the hand's (weapon node's) space: its vertices if the game kept them, else
@@ -1104,6 +1310,159 @@ namespace Trails
 			}
 		}
 
+		bool NamedAs(const RE::NiAVObject* a_object, const char* a_name)
+		{
+			const char* name = a_object ? a_object->name.c_str() : nullptr;
+			return name && _stricmp(name, a_name) == 0;
+		}
+
+		// the first object of that name under a_object (or a_object itself), by its text
+		RE::NiAVObject* FindNamed(RE::NiAVObject* a_object, const char* a_name, int a_depth = 0)
+		{
+			if (!a_object || a_depth > 96) {
+				return nullptr;
+			}
+			if (NamedAs(a_object, a_name)) {
+				return a_object;
+			}
+			if (const auto node = a_object->AsNode()) {
+				for (const auto& child : node->GetChildren()) {
+					if (const auto found = FindNamed(child.get(), a_name, a_depth + 1)) {
+						return found;
+					}
+				}
+			}
+			return nullptr;
+		}
+
+		void CollectNamed(RE::NiAVObject* a_object, const char* a_name, std::vector<RE::NiNode*>& a_out, int a_depth = 0)
+		{
+			const auto node = a_object && a_depth <= 96 ? a_object->AsNode() : nullptr;
+			if (!node) {
+				return;
+			}
+			if (NamedAs(node, a_name)) {
+				a_out.push_back(node);
+			}
+			for (const auto& child : node->GetChildren()) {
+				CollectNamed(child.get(), a_name, a_out, a_depth + 1);
+			}
+		}
+
+		std::string FingerName(bool a_left, int a_finger)
+		{
+			const char side = a_left ? 'L' : 'R';
+			return std::format("NPC {} Finger{}0 [{}F{}0]", side, a_finger, side, a_finger);
+		}
+
+		// The skeleton's hand bone. Worn armor may bring nodes of the skeleton's bone names (nothing under them, never
+		// animated), so not just the first node of that name: the one with the fingers under it, else the one holding the
+		// weapon node (WEAPON / SHIELD hang under the hands), else the first.
+		RE::NiNode* FindHand(RE::NiNode* a_root, bool a_left, bool a_report)
+		{
+			const char*               handName = a_left ? kLeftHand : kRightHand;
+			std::vector<RE::NiNode*>  hands;
+			CollectNamed(a_root, handName, hands);
+			const auto finger = FingerName(a_left, 2);
+			RE::NiNode* chosen = nullptr;
+			const char* how = "";
+			for (const auto hand : hands) {
+				if (FindNamed(hand, finger.c_str())) {
+					chosen = hand;
+					how = "with its fingers";
+					break;
+				}
+			}
+			if (!chosen) {
+				if (const auto slot = FindNamed(a_root, a_left ? "SHIELD" : "WEAPON")) {
+					for (auto p = slot->parent; p; p = p->parent) {
+						if (NamedAs(p, handName)) {
+							chosen = p;
+							how = "holding the weapon node";
+							break;
+						}
+					}
+				}
+			}
+			if (!chosen && !hands.empty()) {
+				chosen = hands.front();
+				how = "the first of its name";
+			}
+			if (a_report) {
+				std::string children;
+				if (chosen) {
+					int n = 0;
+					for (const auto& child : chosen->GetChildren()) {
+						if (child && n++ < 16) {
+							children += std::format("{}'{}'", children.empty() ? "" : ", ", child->name.c_str() ? child->name.c_str() : "");
+						}
+					}
+				}
+				logs::info("{} hand bone: {} node(s) named {}, chosen: {} ({}), under it: {}", a_left ? "left" : "right", hands.size(), handName,
+					chosen ? "yes" : "none", how, children.empty() ? "nothing" : children);
+			}
+			return chosen;
+		}
+
+		// the knuckle joints of the vanilla skeleton (finger bones' roots, index to little finger, right hand; the left
+		// one is its mirror), for hands whose fingers can't be found
+		constexpr std::array<std::array<float, 3>, 4> kVanillaKnuckles{ { { 2.54f, -0.11f, 8.39f }, { 0.37f, -0.08f, 8.26f }, { -1.44f, -0.64f, 7.98f },
+			{ -3.0f, -1.58f, 7.42f } } };
+
+		// A fist's striking part: the knuckles, in the hand bone's space. The finger bones' roots sit at the knuckle
+		// joints and don't move against the hand however the fingers curl; the knuckles' skin is a little beyond them.
+		void MeasureFist(Hand& a_h)
+		{
+			a_h.reach = 0.0f;
+			a_h.axis = { 0.0f, 1.0f, 0.0f };
+			a_h.fromVertices = false;
+			a_h.bladeOk = false;
+			a_h.head.clear();
+			a_h.edges.clear();
+			const auto hand = a_h.node ? a_h.node->AsNode() : nullptr;
+			if (!hand) {
+				return;
+			}
+			std::array<Vec, 4> knuckles{};  // index to little finger
+			a_h.fromVertices = true;        // "from its fingers"
+			for (int f = 1; f <= 4; ++f) {
+				const auto      bone = FindNamed(hand, FingerName(a_h.left, f).c_str());
+				RE::NiTransform rel;
+				if (!bone || !RelativeTo(bone, hand, rel)) {
+					a_h.fromVertices = false;
+					break;
+				}
+				knuckles[static_cast<std::size_t>(f - 1)] = rel.translate;
+			}
+			if (!a_h.fromVertices) {
+				for (std::size_t k = 0; k < 4; ++k) {
+					const auto& v = kVanillaKnuckles[k];
+					knuckles[k] = { a_h.left ? -v[0] : v[0], v[1], v[2] };
+				}
+			}
+			Vec center{};
+			for (const auto& k : knuckles) {
+				center += k;
+			}
+			center = center * 0.25f;
+			const Vec   forward = Normalized(center, { 0.0f, 1.0f, 0.0f });
+			const float skin = std::max(1.0f, knuckles[0].GetDistance(knuckles[3]) * 0.3f);
+			for (int i = 0; i <= 15; ++i) {
+				const float       t = static_cast<float>(i) / 15.0f * 3.0f;
+				const std::size_t seg = std::min<std::size_t>(static_cast<std::size_t>(t), 2);
+				const Vec         base = Lerp(knuckles[seg], knuckles[seg + 1], t - static_cast<float>(seg));
+				for (const float depth : { 0.4f, 0.75f, 1.1f }) {
+					a_h.head.push_back(base + forward * (skin * depth));
+				}
+			}
+			a_h.headCenter = center + forward * (skin * 0.75f);
+			const Vec front = center + forward * skin;
+			a_h.reach = front.Length();
+			a_h.axis = Normalized(front, forward);
+			a_h.edges.push_back(front);
+			a_h.bladeOk = a_h.reach >= kFistMinReach;
+		}
+
 		// what hangs under the weapon node: its first child (the weapon's model)
 		const RE::NiAVObject* HeldModel(RE::NiAVObject* a_node)
 		{
@@ -1177,7 +1536,7 @@ namespace Trails
 					break;
 				}
 				peak = std::max(peak, b.speed);
-				if (peak > kMinSpeed * 0.8f && b.speed < peak * 0.4f) {
+				if (peak > a_h.minSpeed * 0.8f && b.speed < peak * 0.4f) {
 					break;  // the pause before the strike
 				}
 				Vec d = TipOf(a_h, b) - TipOf(a_h, a);
@@ -1262,7 +1621,7 @@ namespace Trails
 						peak = std::max(peak, s.speed);
 					}
 				}
-				if (peak > kMinSpeed) {
+				if (peak > h.minSpeed) {
 					h.strikeSpeed += (peak - h.strikeSpeed) * 0.35f;
 				}
 			}
@@ -1483,6 +1842,45 @@ namespace Trails
 
 		// ---- samples
 
+		// The VR player's weapon node: WEAPON / SHIELD of the VR body (first person skeleton) holding a model, else of the
+		// third person one (body mods may move the weapon there), else anywhere under the VR rig.
+		RE::NiAVObject* VrWeaponNode(RE::Actor* a_actor, bool a_left)
+		{
+			const char* name = a_left ? "SHIELD" : "WEAPON";
+			RE::NiAVObject* first = nullptr;
+			for (const bool firstPerson : { true, false }) {
+				const auto root = a_actor->Get3D(firstPerson);
+				const auto node = root ? FindNamed(root, name) : nullptr;
+				if (node && HeldModel(node)) {
+					return node;
+				}
+				if (!first) {
+					first = node;
+				}
+			}
+			const auto player = a_actor->IsPlayerRef() ? static_cast<RE::PlayerCharacter*>(a_actor) : nullptr;
+			const auto vr = player ? player->GetVRNodeData() : nullptr;
+			if (vr && vr->PlayerWorldNode) {
+				if (const auto node = FindNamed(vr->PlayerWorldNode.get(), name); node && HeldModel(node)) {
+					return node;
+				}
+			}
+			return first;
+		}
+
+		// the VR player's hand: the one the game moves with the controller
+		RE::NiNode* VrHand(RE::Actor* a_actor, RE::NiNode* a_root, bool a_left)
+		{
+			const auto player = a_actor->IsPlayerRef() ? static_cast<RE::PlayerCharacter*>(a_actor) : nullptr;
+			const auto vr = player ? player->GetVRNodeData() : nullptr;
+			if (vr) {
+				if (const auto hand = a_left ? vr->NPCLHnd.get() : vr->NPCRHnd.get()) {
+					return hand;
+				}
+			}
+			return FindHand(a_root, a_left, Debug());
+		}
+
 		void SampleHand(Tracked& a_t, Hand& a_h, RE::Actor* a_actor, bool a_drawn)
 		{
 			const auto form = a_actor->GetEquippedObject(a_h.left);
@@ -1491,29 +1889,77 @@ namespace Trails
 			const auto type = weapon ? weapon->GetWeaponType() : RE::WEAPON_TYPE::kHandToHandMelee;
 			const bool twoHanded = weapon && (type == RE::WEAPON_TYPE::kTwoHandSword || type == RE::WEAPON_TYPE::kTwoHandAxe || type == RE::WEAPON_TYPE::kBow ||
 												 type == RE::WEAPON_TYPE::kCrossbow);
-			const auto looked = a_h.left && twoHanded ? nullptr : weapon;
+			// a fist: nothing in this hand and no weapon in the other (a sword in the right leaves the left out of it)
+			const bool fist = tuning.fists && IsUnarmed(form) && !HoldsWeapon(a_actor->GetEquippedObject(!a_h.left)) && CanPunch(a_t, a_actor);
+			if (fist != a_h.fist) {
+				a_h.fist = fist;
+				a_h.minSpeed = fist ? kFistMinSpeed : kMinSpeed;
+				a_h.strikeSpeed = fist ? kFistFirstStrike : kFirstStrike;
+				a_h.node = nullptr;
+				a_h.held = nullptr;
+				a_h.bladeOk = false;
+				a_h.elementCheck = 0.0f;
+				a_h.history.clear();
+			}
+			const auto looked = fist || (a_h.left && twoHanded) ? nullptr : weapon;
 			if (looked != a_h.looked) {
 				a_h.looked = looked;
 				a_h.unique = IsUnique(looked);
 				a_h.elementCheck = 0.0f;
 			}
+			if (fist) {
+				CheckGauntlets(a_t, a_actor);
+				if (a_h.enchantment != a_t.gauntletEnchantment) {
+					a_h.elementCheck = 0.0f;
+				}
+			}
+			if (a_h.tuned != tuningRevision) {
+				a_h.tuned = tuningRevision;
+				a_h.elementCheck = 0.0f;
+			}
 			if (now >= a_h.elementCheck) {
 				a_h.elementCheck = now + 1.0f;
-				a_h.enchantment = looked ? EnchantmentOf(a_actor, a_h.left, looked) : nullptr;
+				a_h.enchantment = fist ? a_t.gauntletEnchantment : looked ? EnchantmentOf(a_actor, a_h.left, looked) : nullptr;
 				a_h.element = ElementOf(a_actor, looked, a_h.enchantment);
+				a_h.tint = TintOf(a_h.enchantment);
 			}
 			Look(a_h);
-			if (!a_drawn || !IsMelee(weapon) || !a_t.root || (a_h.left && twoHanded)) {
+			if (!a_drawn || !a_t.root || !(fist || (IsMelee(weapon) && !(a_h.left && twoHanded)))) {
 				a_h.weapon = weapon;
 				a_h.held = nullptr;
 				a_h.bladeOk = false;
 				a_h.history.clear();
 				return;
 			}
-			if (!a_h.node || a_h.node->parent == nullptr) {
-				a_h.node = a_t.root->GetObjectByName(a_h.left ? "SHIELD" : "WEAPON");
+			if (a_t.vr) {
+				// looked for again while it holds nothing (the model may hang elsewhere), a few times a second
+				const bool lost = !a_h.node || a_h.node->parent == nullptr || (!fist && !HeldModel(a_h.node));
+				if (lost && now >= a_h.findAgain) {
+					a_h.findAgain = now + 0.5f;
+					const auto before = a_h.node;
+					a_h.node = fist ? VrHand(a_actor, a_t.root, a_h.left) : VrWeaponNode(a_actor, a_h.left);
+					if (Debug() || a_h.node != before) {
+						const auto parent = a_h.node ? a_h.node->parent : nullptr;
+						const auto model = !fist && a_h.node ? HeldModel(a_h.node) : nullptr;
+						logs::info("VR {} hand: {} {} (under '{}'){}", a_h.left ? "left" : "right", fist ? "hand bone" : "weapon node", a_h.node ? "found" : "not found",
+							parent && parent->name.c_str() ? parent->name.c_str() : "",
+							fist ? std::string{} : model ? std::format(", holds '{}'", model->name.c_str() ? model->name.c_str() : "") : std::string(", holds nothing"));
+					}
+				}
+			} else if (!a_h.node || a_h.node->parent == nullptr) {
+				if (!fist) {
+					a_h.node = a_t.root->GetObjectByName(a_h.left ? "SHIELD" : "WEAPON");
+				} else if (now >= a_h.measureAgain) {
+					a_h.node = FindHand(a_t.root, a_h.left, Debug());  // a search of the whole 3D: not every frame when it fails
+					if (!a_h.node) {
+						a_h.measureAgain = now + 1.0f;
+						if (Debug() || a_t.player) {
+							logs::info("{:08X} {} hand: no hand bone in its skeleton, no fist trail", a_t.formID, a_h.left ? "left" : "right");
+						}
+					}
+				}
 			}
-			const auto held = HeldModel(a_h.node);
+			const auto held = fist ? a_h.node : HeldModel(a_h.node);
 			if (!held) {
 				a_h.bladeOk = false;
 				a_h.history.clear();
@@ -1525,24 +1971,31 @@ namespace Trails
 				a_h.measureAgain = now + 0.5f;
 				const bool quiet = retry && held == a_h.held && weapon == a_h.weapon;
 				if (weapon != a_h.weapon) {
-					a_h.strikeSpeed = kFirstStrike;
+					a_h.strikeSpeed = fist ? kFistFirstStrike : kFirstStrike;
 				}
 				a_h.held = held;
 				a_h.weapon = weapon;
-				a_h.heavy = IsHeavy(weapon);
+				a_h.heavy = !fist && IsHeavy(weapon);
 				a_h.history.clear();
-				MeasureWeapon(a_h);
+				if (fist) {
+					MeasureFist(a_h);
+				} else {
+					MeasureWeapon(a_h);
+				}
 				if ((Debug() || a_t.player) && (!quiet || a_h.bladeOk)) {
 					logs::info("{:08X} {} hand: {} reaches {:.0f} units (from its {}), {} {} head points{}", a_t.formID, a_h.left ? "left" : "right",
-						weapon->GetName(), a_h.reach, a_h.fromVertices ? "vertices" : "bounds", a_h.heavy ? "heavy head," : "blade,", a_h.head.size(),
-						a_h.bladeOk ? "" : ": too short, no trail");
+						fist ? "the fist" : weapon->GetName(), a_h.reach, fist ? (a_h.fromVertices ? "fingers" : "usual knuckle places") : a_h.fromVertices ? "vertices" : "bounds",
+						fist ? "knuckles," : a_h.heavy ? "heavy head," : "blade,", a_h.head.size(), a_h.bladeOk ? "" : ": too short, no trail");
 				}
 			}
 			if (!a_h.bladeOk) {
 				return;
 			}
 			RE::NiTransform rel;
-			if (!RelativeTo(a_h.node, a_t.root, rel)) {
+			if (a_t.vr) {
+				// VR places the hands from the controllers: their world transforms, against the VR body's
+				rel = a_t.root->world.Invert() * a_h.node->world;
+			} else if (!RelativeTo(a_h.node, a_t.root, rel)) {
 				a_h.node = nullptr;
 				a_h.history.clear();
 				return;
@@ -1595,6 +2048,12 @@ namespace Trails
 		// how much a sample's moment of the swing shows (0..1)
 		float Weight(const Tracked& a_t, const Hand& a_h, const Sample& a_s)
 		{
+			// VR: the player swings the controllers, no attack animation tells a swing: a fast enough swing is one, each
+			// hand on its own
+			if (a_t.vr && tuning.vrSwings) {
+				const float threshold = tuning.vrSwingSpeed * (a_h.fist ? 0.6f : 1.0f);
+				return Smoothstep(threshold * 0.6f, threshold, a_s.speed);
+			}
 			if (!a_s.window || !a_s.lead) {
 				return 0.0f;
 			}
@@ -1607,7 +2066,7 @@ namespace Trails
 			if (!(past->hands & (a_h.left ? 2 : 1)) && (past->named || !a_s.strong)) {
 				return 0.0f;
 			}
-			const float threshold = std::max(kMinSpeed, a_h.strikeSpeed * kStrikeShare);
+			const float threshold = std::max(a_h.minSpeed, a_h.strikeSpeed * kStrikeShare);
 			return threshold > 0.0f ? Smoothstep(threshold * 0.6f, threshold, a_s.speed) : 1.0f;
 		}
 
@@ -1748,6 +2207,19 @@ namespace Trails
 			return sp;
 		}
 
+		// where the trails hang: under the skeleton root, for the VR player under its VR rig
+		RE::NiNode* DrawRoot(const Tracked& a_t)
+		{
+			if (a_t.vr) {
+				const auto player = RE::PlayerCharacter::GetSingleton();
+				const auto vr = player ? player->GetVRNodeData() : nullptr;
+				if (vr && vr->PlayerWorldNode) {
+					return vr->PlayerWorldNode.get();
+				}
+			}
+			return a_t.root;
+		}
+
 		// ---- lines
 
 		Line* LineFor(RE::NiNode* a_root, Hand& a_h, std::uint32_t a_attack, float a_time)
@@ -1814,11 +2286,11 @@ namespace Trails
 		void Lay(Tracked& a_t, Hand& a_h, const RE::NiTransform& a_root)
 		{
 			auto&       hist = a_h.history;
-			const float amount = tuning.sparkAmount;
+			const float amount = tuning.sparkAmount * (a_h.fist ? kFistDensity : 1.0f);
 			const float size = tuning.sparkSize;
 			const float duration = tuning.sparkLife;
 			const float spread = tuning.sparkSpread;
-			const float share = a_h.heavy ? kHeavyHead : kBladeHead;
+			const float share = a_h.fist ? kFistHead : a_h.heavy ? kHeavyHead : kBladeHead;
 			for (std::size_t i = 1; i + 1 < hist.size(); ++i) {
 				auto&       b = hist[i];
 				const auto& a = hist[i - 1];
@@ -1845,8 +2317,9 @@ namespace Trails
 				const float travel = stretch.At(edge, 0.0f).GetDistance(stretch.At(edge, 1.0f)) * a_root.scale;
 
 				// the thin line along the leading edge
+				const auto drawRoot = DrawRoot(a_t);
 				if (tuning.line) {
-					if (auto* line = LineFor(a_t.root, a_h, b.attack, a.time)) {
+					if (auto* line = LineFor(drawRoot, a_h, b.attack, a.time)) {
 						if (line->points.empty()) {
 							AddLinePoint(*line, world(stretch.At(edge, 0.0f)), a.time, w);
 						}
@@ -1878,7 +2351,7 @@ namespace Trails
 				};
 				// a new particle at a point of the weapon, a random moment of the stretch
 				const auto spawn = [&](const Vec& a_point, bool a_dot) -> Spark* {
-					auto* sp = NewSpark(a_t.root, a_h, a_dot);
+					auto* sp = NewSpark(drawRoot, a_h, a_dot);
 					if (!sp) {
 						return nullptr;
 					}
@@ -2117,11 +2590,10 @@ namespace Trails
 				return;
 			}
 			StepParticles(a_h, a_dt);
-			const auto& rootWorld = a_t.root->world;
 			if (a_h.bladeOk && !a_h.head.empty() && a_h.trailOn && a_h.history.size() >= 3) {
-				Lay(a_t, a_h, rootWorld);
+				Lay(a_t, a_h, a_t.root->world);  // the samples are against the skeleton root
 			}
-			DrawParticles(a_h, rootWorld);
+			DrawParticles(a_h, DrawRoot(a_t)->world);
 		}
 
 		// ---- actors
@@ -2164,11 +2636,23 @@ namespace Trails
 		{
 			using State = RE::ATTACK_STATE_ENUM;
 			const auto state = a_actor->AsActorState()->GetAttackState();
-			if (state == State::kBowDraw || state == State::kBowAttached || state == State::kBowDrawn) {
+			bool       drawing = state == State::kBowDraw || state == State::kBowAttached || state == State::kBowDrawn;
+			bool       full = state == State::kBowDrawn;
+			// VR: the string is pulled by hand; the game keeps how far (0..1)
+			if (a_t.vr) {
+				const auto vr = static_cast<RE::PlayerCharacter*>(a_actor)->GetVRNodeData();
+				const float amount = vr ? vr->currentBowDrawAmount : 0.0f;
+				if (amount > 0.05f && amount <= 1.01f) {
+					a_t.vrBowSeen = true;
+					drawing = true;
+					full = full || amount >= 0.95f;
+				}
+			}
+			if (drawing) {
 				if (a_t.bowDrawStart < 0.0f) {
 					a_t.bowDrawStart = now;
 				}
-				if (state == State::kBowDrawn && a_t.bowFullAt < 0.0f) {
+				if (full && a_t.bowFullAt < 0.0f) {
 					a_t.bowFullAt = now;
 				}
 				return;
@@ -2203,7 +2687,10 @@ namespace Trails
 				}
 			}
 			bool firstPerson = false;
-			if (a_t.player) {
+			a_t.vr = a_t.player && REL::Module::IsVR();
+			if (a_t.vr) {
+				firstPerson = true;  // the VR body: the hands that follow the controllers
+			} else if (a_t.player) {
 				const auto camera = RE::PlayerCamera::GetSingleton();
 				firstPerson = camera && camera->IsInFirstPerson();
 			}
@@ -2362,7 +2849,10 @@ namespace Trails
 				if (!t || !t->root) {
 					continue;
 				}
-				const float hold = HoldOf(*t);
+				float hold = HoldOf(*t);
+				if (hold < 0.0f && t->vr && !t->vrBowSeen && projectile->GetProjectileRuntimeData().livingTime < 0.5f) {
+					hold = tuning.arrowHold;  // VR without a draw to time: a fresh arrow of yours is a shot
+				}
 				if (hold < 0.0f) {
 					continue;  // not just shot (it was in the world already)
 				}
@@ -2371,7 +2861,7 @@ namespace Trails
 					enchantment = EnchantmentOf(shooter, false, bow);
 				}
 				const auto element = ElementOf(shooter, bow, enchantment);
-				const auto v = LookAt(bow, element, IsUnique(bow));
+				const auto v = LookAt(bow, element, IsUnique(bow), TintOf(enchantment));
 				const bool trail = v.on && hold >= tuning.arrowHold;
 				if (Debug() || t->player) {
 					logs::info("{:08X}: arrow from {}, bow held {:.2f} s fully drawn ({:.1f} s needed), {}: {}", t->formID, bow->GetName(), hold, tuning.arrowHold,
@@ -2550,7 +3040,7 @@ namespace Trails
 			for (auto it = arrows.begin(); it != arrows.end();) {
 				auto&      a = **it;
 				// under your skeleton (it is drawn whenever you see anything), whoever shot it
-				const auto root = tracked.empty() ? nullptr : tracked.front()->root;
+				const auto root = tracked.empty() || !tracked.front()->root ? nullptr : DrawRoot(*tracked.front());
 				if (!root) {
 					ReleaseHand(a.trail, true);
 					it = arrows.erase(it);
@@ -2593,6 +3083,22 @@ namespace Trails
 				for (std::size_t k = 0; k < 2; ++k) {
 					const auto& h = you.hands[k];
 					auto&       out = st.hands[k];
+					if (const auto effect = h.tint.effect; effect && (h.fist || h.looked)) {
+						out.effectName = effect->GetName();
+						if (const auto file = effect->GetFile(0)) {
+							out.effectPlugin = file->GetFilename();
+							out.effectId = file->IsLight() ? effect->GetFormID() & 0xFFF : effect->GetFormID() & 0xFFFFFF;
+						}
+					}
+					if (h.fist) {
+						out.weapon = you.drawn && h.held != nullptr;
+						out.fist = true;
+						out.name = you.gauntlet ? you.gauntlet->GetName() : "";
+						out.element = h.element;
+						out.trailOn = h.trailOn;
+						out.color = h.color;
+						continue;
+					}
 					const auto  w = h.looked;
 					out.weapon = w && you.drawn && (IsMelee(w) ? h.held != nullptr : w->GetWeaponType() == RE::WEAPON_TYPE::kBow);
 					if (!w) {
@@ -2646,6 +3152,7 @@ namespace Trails
 		RefreshTuning();
 		FindLoot();
 		FindGhostForms();
+		FindSoulTrapForms();
 		// a few made ahead (copying a model mid-fight could hitch), and a check that copies work at all
 		for (int i = 0; i < 8; ++i) {
 			auto b = MakeBatch();
@@ -2710,6 +3217,58 @@ namespace Trails
 		if (statusIn <= 0.0f) {
 			statusIn = 0.25f;
 			WriteStatus();
+		}
+	}
+
+	bool GlowColor(const RE::EffectSetting* a_effect, std::array<float, 3>& a_color)
+	{
+		return Glow(a_effect, a_color);
+	}
+
+	Settings::Element ElementOfEffect(const RE::EffectSetting* a_effect)
+	{
+		if (!a_effect) {
+			return Settings::kOther;
+		}
+		const auto resist = a_effect->data.resistVariable;
+		if (a_effect->HasKeywordString("MagicDamageFire") || resist == RE::ActorValue::kResistFire) {
+			return Settings::kFire;
+		}
+		if (a_effect->HasKeywordString("MagicDamageFrost") || resist == RE::ActorValue::kResistFrost) {
+			return Settings::kFrost;
+		}
+		if (a_effect->HasKeywordString("MagicDamageShock") || resist == RE::ActorValue::kResistShock) {
+			return Settings::kShock;
+		}
+		switch (a_effect->data.primaryAV) {
+		case RE::ActorValue::kHealth:
+			return Settings::kHealth;
+		case RE::ActorValue::kMagicka:
+			return Settings::kMagicka;
+		case RE::ActorValue::kStamina:
+			return Settings::kStamina;
+		default:
+			break;
+		}
+		if (IsSoulTrap(a_effect)) {
+			return Settings::kSoulTrap;
+		}
+		using Kind = RE::EffectArchetypes::ArchetypeID;
+		switch (a_effect->GetArchetype()) {
+		case Kind::kParalysis:
+			return Settings::kParalysis;
+		case Kind::kDemoralize:
+			return Settings::kFear;
+		case Kind::kTurnUndead:
+			return Settings::kTurnUndead;
+		case Kind::kBanish:
+			return Settings::kBanish;
+		case Kind::kCalm:
+			return Settings::kCalm;
+		case Kind::kFrenzy:
+			return Settings::kFrenzy;
+		default:
+			return Settings::kOther;
 		}
 	}
 

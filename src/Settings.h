@@ -93,10 +93,24 @@ namespace Settings
 		{ "Dragonborn.esm", 0x01AEA4, "Bloodskal Blade", true, true, { 1.0f, 0.12f, 0.12f } },  // red
 	};
 
+	// one enchantment of the color list: a magic effect (by its plugin and form id), so every enchantment made with it
+	// counts, the game's, other mods' and the ones you make yourself
+	struct EnchantmentRule
+	{
+		std::string          plugin;
+		std::uint32_t        id{ 0 };
+		std::string          name;           // as it was added (shown while its plugin isn't loaded)
+		bool                 trail{ true };  // off: items enchanted with it leave no trail
+		std::array<float, 3> color{ 1.0f, 1.0f, 1.0f };
+
+		bool operator==(const EnchantmentRule&) const = default;
+	};
+
 	struct Values
 	{
 		bool enabled{ true };
 		bool normalAttacks{ false };  // ordinary (not power) attacks get trails too
+		bool fists{ true };           // punches too, colored by the gauntlets' enchantment
 		bool npcs{ true };            // NPCs' and creatures' power attacks near you
 		float npcRange{ 2656.0f };
 		int   npcMax{ 8 };
@@ -116,6 +130,8 @@ namespace Settings
 		bool  line{ true };          // one thin line along each swing's edge
 
 		std::array<ElementSettings, kElements> elements{ kDefaultElements };
+		bool                                   glowColors{ true };  // the color the enchantment glows with on items, when it has a clear one
+		std::vector<EnchantmentRule>           enchantments;        // enchantments with colors of their own (they win over the above)
 
 		// which weapons
 		int                     weaponFilter{ kAllWeapons };
@@ -124,6 +140,10 @@ namespace Settings
 		// arrows shot from a bow held drawn long enough
 		bool  arrows{ true };
 		float arrowHold{ 1.0f };  // seconds the bow is held fully drawn before the shot
+
+		// VR: your swings are your own motion (no attack animations): a fast enough swing leaves a trail
+		bool  vrSwings{ true };
+		float vrSwingSpeed{ 1000.0f };  // units/s of the weapon's tip against your body (fists: 60% of it)
 
 		bool        debugLog{ false };
 		std::string language{ "auto" };

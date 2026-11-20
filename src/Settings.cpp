@@ -8,7 +8,7 @@ namespace Settings
 	{
 		using json = nlohmann::json;
 
-		constexpr int kVersion = 6;
+		constexpr int kVersion = 7;
 
 		constexpr std::array<const char*, kElements> kKeys{ "plain", "fire", "frost", "shock", "chaos", "health", "magicka", "stamina", "soulTrap",
 			"paralysis", "fear", "turnUndead", "banish", "calm", "frenzy", "bound", "ghost", "other" };
@@ -89,10 +89,47 @@ namespace Settings
 			return list;
 		}
 
+		void ReadEnchantments(const json& a_root, Values& a_values)
+		{
+			const auto it = a_root.find("enchantments");
+			if (it == a_root.end() || !it->is_array()) {
+				return;
+			}
+			a_values.enchantments.clear();
+			for (const auto& entry : *it) {
+				try {
+					EnchantmentRule rule;
+					rule.plugin = entry.at("plugin").get<std::string>();
+					rule.id = ParseId(entry.at("id")) & 0xFFFFFF;
+					Read(entry, "name", rule.name);
+					Read(entry, "trail", rule.trail);
+					Read(entry, "color", rule.color);
+					a_values.enchantments.push_back(std::move(rule));
+				} catch (const std::exception& e) {
+					logs::warn("settings: an enchantment of the list ignored ({})", e.what());
+				}
+			}
+		}
+
+		json WriteEnchantments(const Values& a_values)
+		{
+			json list = json::array();
+			for (const auto& rule : a_values.enchantments) {
+				list.push_back({ { "plugin", rule.plugin }, { "id", std::format("0x{:06X}", rule.id) }, { "name", rule.name }, { "trail", rule.trail },
+					{ "color", rule.color } });
+			}
+			return list;
+		}
+
 		void Clamp(Values& a_values)
 		{
 			a_values.weaponFilter = std::clamp(a_values.weaponFilter, 0, kWeaponFilters - 1);
 			for (auto& rule : a_values.weapons) {
+				for (auto& c : rule.color) {
+					c = std::clamp(c, 0.0f, 1.0f);
+				}
+			}
+			for (auto& rule : a_values.enchantments) {
 				for (auto& c : rule.color) {
 					c = std::clamp(c, 0.0f, 1.0f);
 				}
@@ -108,6 +145,7 @@ namespace Settings
 			a_values.sparkSpread = std::clamp(a_values.sparkSpread, 0.0f, 4.0f);
 			a_values.flyingSparks = std::clamp(a_values.flyingSparks, 0.0f, 4.0f);
 			a_values.arrowHold = std::clamp(a_values.arrowHold, 0.0f, 10.0f);
+			a_values.vrSwingSpeed = std::clamp(a_values.vrSwingSpeed, 200.0f, 4000.0f);
 			for (auto& e : a_values.elements) {
 				for (auto& c : e.color) {
 					c = std::clamp(c, 0.0f, 1.0f);
@@ -135,6 +173,7 @@ namespace Settings
 			const auto root = json::parse(file);
 			Read(root, "enabled", values.enabled);
 			Read(root, "normalAttacks", values.normalAttacks);
+			Read(root, "fists", values.fists);
 			Read(root, "npcs", values.npcs);
 			Read(root, "npcRange", values.npcRange);
 			Read(root, "npcMax", values.npcMax);
@@ -150,9 +189,13 @@ namespace Settings
 			Read(root, "line", values.line);
 			Read(root, "arrows", values.arrows);
 			Read(root, "arrowHold", values.arrowHold);
+			Read(root, "vrSwings", values.vrSwings);
+			Read(root, "vrSwingSpeed", values.vrSwingSpeed);
 			Read(root, "debugLog", values.debugLog);
 			Read(root, "language", values.language);
 			ReadWeapons(root, values);
+			ReadEnchantments(root, values);
+			Read(root, "glowColors", values.glowColors);
 			if (const auto it = root.find("colors"); it != root.end() && it->is_object()) {
 				for (std::size_t e = 0; e < kElements; ++e) {
 					if (const auto entry = it->find(kKeys[e]); entry != it->end() && entry->is_object()) {
@@ -187,6 +230,7 @@ namespace Settings
 			{ "version", kVersion },
 			{ "enabled", values.enabled },
 			{ "normalAttacks", values.normalAttacks },
+			{ "fists", values.fists },
 			{ "npcs", values.npcs },
 			{ "npcRange", values.npcRange },
 			{ "npcMax", values.npcMax },
@@ -202,7 +246,11 @@ namespace Settings
 			{ "line", values.line },
 			{ "arrows", values.arrows },
 			{ "arrowHold", values.arrowHold },
+			{ "vrSwings", values.vrSwings },
+			{ "vrSwingSpeed", values.vrSwingSpeed },
 			{ "colors", colors },
+			{ "glowColors", values.glowColors },
+			{ "enchantments", WriteEnchantments(values) },
 			{ "weaponFilter", kFilterKeys[static_cast<std::size_t>(values.weaponFilter)] },
 			{ "weapons", WriteWeapons(values) },
 			{ "debugLog", values.debugLog },
