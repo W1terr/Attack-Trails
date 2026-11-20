@@ -21,9 +21,10 @@ namespace Attacks
 		bool stop{ false };
 
 		bool          precision{ false };       // the animation has Precision's own hit windows
-		std::uint8_t  collisionAdd{ 0 };        // the hands a Collision_Add opened (1 right, 2 left)
+		std::uint8_t  collisionAdd{ 0 };        // the parts a Collision_Add opened: 1 right hand / weapon, 2 left, 4 another (a foot)
 		float         collisionDuration{ 0.0f };  // its Duration(), 0: until Collision_Remove
 		bool          collisionRemove{ false };
+		std::uint8_t  collisionRemoved{ 0 };    // the parts it closed (as above), 0xFF: all of them
 		bool          clipEdge{ false };
 
 		bool Any() const { return powerStart || attackStart || swing || preHit || hit || stop || precision || collisionAdd || collisionRemove || clipEdge; }

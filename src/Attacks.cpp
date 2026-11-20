@@ -64,6 +64,27 @@ namespace Attacks
 			return a_lowerPayload.substr(from, to == std::string::npos ? std::string::npos : to - from);
 		}
 
+		// the body part a Precision payload's Node() is: 1 the right hand or its weapon, 2 the left, 4 another (a kick, a
+		// head butt); no node is the right weapon (Precision's default)
+		std::uint8_t PartOf(const std::string& a_lowerPayload)
+		{
+			const auto node = Parameter(a_lowerPayload, "node");
+			if (node.empty() || node == "weapon") {
+				return 1;
+			}
+			if (node == "shield") {
+				return 2;
+			}
+			const auto has = [&](const char* a_part) { return node.find(a_part) != std::string::npos; };
+			if (has("[rhnd]") || has("r hand") || has("r finger") || has("[rlar]") || has("r forearm")) {
+				return 1;
+			}
+			if (has("[lhnd]") || has("l hand") || has("l finger") || has("[llar]") || has("l forearm")) {
+				return 2;
+			}
+			return 4;
+		}
+
 		Class Classify(std::string_view a_tag, std::string_view a_payload)
 		{
 			// MCO / BFCO attack clips set their attack speed and next attacks when they begin, and end with a recovery: the
@@ -165,13 +186,10 @@ namespace Attacks
 					break;
 				case Class::kCollisionAdd:
 					{
-						// the node the hit window is on: the right weapon (or fist), the left one (SHIELD), else a kick or a bash
+						// the part the hit window is on: the right weapon (or fist), the left one (SHIELD, left fist), else a kick
 						const auto payload = Lowered(a_event->payload.c_str() ? a_event->payload.c_str() : "");
-						const auto node = Parameter(payload, "node");
-						const auto has = [&](const char* a_part) { return node.find(a_part) != std::string::npos; };
-						const std::uint8_t hands = node.empty() || node == "weapon" || has("[rhnd]") ? 1 : node == "shield" || has("[lhnd]") ? 2 : 0;
 						s.precision = true;
-						s.collisionAdd |= hands;
+						s.collisionAdd |= PartOf(payload);
 						if (const auto duration = Parameter(payload, "duration"); !duration.empty()) {
 							try {
 								s.collisionDuration = std::max(s.collisionDuration, std::stof(duration));
@@ -181,8 +199,13 @@ namespace Attacks
 						break;
 					}
 				case Class::kCollisionRemove:
-					s.collisionRemove = true;
-					break;
+					{
+						// Collision_Remove closes its node's window; Collision_AttackEnd / Collision_Cancel all of them
+						const auto payload = Lowered(a_event->payload.c_str() ? a_event->payload.c_str() : "");
+						s.collisionRemove = true;
+						s.collisionRemoved |= Same(tag, "Collision_Remove") && !Parameter(payload, "node").empty() ? PartOf(payload) : 0xFF;
+						break;
+					}
 				case Class::kClipEdge:
 					s.clipEdge = true;
 					break;

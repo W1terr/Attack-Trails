@@ -481,6 +481,9 @@ namespace Trails
 			bool          lead;    // this hand moved at least half as fast as the other one (or there is no other)
 			bool          strong;  // keeps up with the other hand (kPairShare of its speed, or there is no other): a two-weapon swing
 			bool          emitted;  // its stretch of the swing laid its particles
+			std::uint8_t  parts;    // the body parts its Precision hit windows are on (1 right, 2 left, 4 another), 0: no such window
+			float         shoulderDist;  // fists: the knuckles' distance from the shoulder
+			float         out;           // and how fast it grows (units/s): negative while the arm pulls back
 		};
 
 		struct Hand
@@ -509,6 +512,8 @@ namespace Trails
 			bool             bladeOk{ false };
 			float            measureAgain{ 0.0f };
 			float            findAgain{ 0.0f };  // VR: the next look for the weapon / hand node
+			const RE::NiAVObject* shoulder{ nullptr };    // fists: the upper arm above the hand
+			const RE::NiAVObject* shoulderOf{ nullptr };  // the hand node it was found for
 			bool             heavy{ false };  // an axe, mace or hammer: its head strikes, not a tip
 			std::vector<Vec> head;            // points of the part that strikes
 			Vec              headCenter;
@@ -546,6 +551,7 @@ namespace Trails
 			bool          sawWindow{ false };  // it sent swing / hit events
 			float         windowUntil{ -1.0f };
 			bool          precision{ false };  // the attack's animation times its hits with Precision annotations
+			std::uint8_t  windowParts{ 0 };    // the parts its open Precision hit windows are on
 			float         swingAt{ -1.0f };    // when, while its hit hasn't come (-1: no swing waiting)
 			bool          sawHit{ false };
 			std::uint8_t  nameHands{ 0 };       // the hands its attack data names (1 right, 2 left), 0 = unknown
@@ -1487,13 +1493,19 @@ namespace Trails
 		constexpr float kSwingWindow = 0.3f;
 		constexpr float kPowerSwingMult = 1.8f;
 
-		float SwingWindow(const Tracked& a_t, RE::Actor* a_actor)
+		// the actor's attack speed (its animation graph's weaponSpeedMult), 1 = normal
+		float AttackSpeed(RE::Actor* a_actor)
 		{
 			float speed = 1.0f;
 			if (!a_actor->GetGraphVariableFloat("weaponSpeedMult", speed) || speed <= 0.0f) {
 				speed = 1.0f;
 			}
-			return kSwingWindow * (a_t.power ? kPowerSwingMult : 1.0f) / std::clamp(speed, 0.3f, 3.0f);
+			return std::clamp(speed, 0.3f, 3.0f);
+		}
+
+		float SwingWindow(const Tracked& a_t, RE::Actor* a_actor)
+		{
+			return kSwingWindow * (a_t.power ? kPowerSwingMult : 1.0f) / AttackSpeed(a_actor);
 		}
 
 		// opens the window from a_lead before now until a_until after now (a_set: exactly then, else at least then)
@@ -1558,11 +1570,7 @@ namespace Trails
 		// the strike's samples of every hand show, and the window stays open a little after the hit
 		void MarkStrike(Tracked& a_t, RE::Actor* a_actor, float a_anchor, const char* a_why)
 		{
-			float speed = 1.0f;
-			if (!a_actor->GetGraphVariableFloat("weaponSpeedMult", speed) || speed <= 0.0f) {
-				speed = 1.0f;
-			}
-			speed = std::clamp(speed, 0.3f, 3.0f);
+			const float speed = AttackSpeed(a_actor);
 			a_t.sawWindow = true;
 			a_t.sawHit = true;
 			a_t.swingAt = -1.0f;
@@ -1721,6 +1729,7 @@ namespace Trails
 				a_t.noneFor = 0.0f;
 				a_t.sawWindow = false;
 				a_t.precision = false;
+				a_t.windowParts = 0;
 				a_t.swingAt = -1.0f;
 				a_t.sawHit = false;
 				a_t.nameHands = 0;
@@ -1805,7 +1814,7 @@ namespace Trails
 			} else {
 				a_t.noneFor += a_dt;
 			}
-			a_t.eventHands |= (signals.swingRight ? 1 : 0) | (signals.swingLeft ? 2 : 0) | signals.collisionAdd;
+			a_t.eventHands |= (signals.swingRight ? 1 : 0) | (signals.swingLeft ? 2 : 0) | (signals.collisionAdd & 3);
 			auto& past = CurrentPast(a_t);
 			past.hands = a_t.nameHands ? a_t.nameHands : a_t.eventHands ? a_t.eventHands : 3;
 			past.named = a_t.nameHands != 0;
@@ -1815,14 +1824,36 @@ namespace Trails
 				a_t.precision = true;
 			}
 			if (a_t.precision) {
+				// Each window is on its body part: the hand (or weapon) it names strikes, whatever the attack data's name
+				// says; a window on a foot (a kick) leaves the hands out. A fist's punch is traced back from the window's
+				// start, which some movesets put near the impact.
 				if (signals.collisionAdd) {
+					if (now >= a_t.windowUntil) {
+						a_t.windowParts = 0;
+					}
+					a_t.windowParts |= signals.collisionAdd;
 					Open(a_t, 0.02f, signals.collisionDuration > 0.0f ? signals.collisionDuration : 3.0f, false);
+					const float speed = AttackSpeed(a_actor);
+					for (auto& h : a_t.hands) {
+						const std::uint8_t part = h.left ? 2 : 1;
+						const float        from = h.fist && (signals.collisionAdd & part) ? StrikeFrom(a_t, h, now, kMaxStrike / speed) : now - 0.02f;
+						for (auto it = h.history.rbegin(); it != h.history.rend() && it->time >= from; ++it) {
+							if (it->attack == a_t.attack) {
+								it->window = true;
+								it->parts |= signals.collisionAdd;
+							}
+						}
+					}
 					if (Debug()) {
-						logs::info("{:08X}: Precision hit window opens ({:.2f} s)", a_t.formID, signals.collisionDuration);
+						logs::info("{:08X}: Precision hit window opens on {}{}{} ({:.2f} s)", a_t.formID, signals.collisionAdd & 1 ? "right " : "",
+							signals.collisionAdd & 2 ? "left " : "", signals.collisionAdd & 4 ? "another part " : "", signals.collisionDuration);
 					}
 				}
 				if (signals.collisionRemove) {
-					a_t.windowUntil = std::min(a_t.windowUntil, now + 0.03f);
+					a_t.windowParts &= static_cast<std::uint8_t>(~signals.collisionRemoved);
+					if (!a_t.windowParts) {
+						a_t.windowUntil = std::min(a_t.windowUntil, now + 0.03f);
+					}
 				}
 				return;
 			}
@@ -1866,6 +1897,20 @@ namespace Trails
 				}
 			}
 			return first;
+		}
+
+		// a fist's shoulder: the upper arm above the hand bone (walked up from it, so armor's copies of the bone names
+		// can't stand in), else the hand's grandparent
+		const RE::NiAVObject* ShoulderOf(const RE::NiAVObject* a_hand, bool a_left)
+		{
+			const char* name = a_left ? "NPC L UpperArm [LUar]" : "NPC R UpperArm [RUar]";
+			int         depth = 0;
+			for (auto p = a_hand ? a_hand->parent : nullptr; p && depth < 8; p = p->parent, ++depth) {
+				if (NamedAs(p, name)) {
+					return p;
+				}
+			}
+			return a_hand && a_hand->parent ? a_hand->parent->parent : nullptr;
 		}
 
 		// the VR player's hand: the one the game moves with the controller
@@ -2010,9 +2055,20 @@ namespace Trails
 			s.scale = rel.scale;
 			s.attack = a_t.attack;
 			s.window = now < a_t.windowUntil;
+			s.parts = s.window && a_t.precision ? a_t.windowParts : 0;
 			s.lead = true;
 			s.strong = true;
 			const Vec tip = s.pos + Rotate(s.rot, a_h.axis * (a_h.reach * s.scale));
+			if (a_h.fist) {
+				if (a_h.shoulderOf != a_h.node) {
+					a_h.shoulderOf = a_h.node;
+					a_h.shoulder = ShoulderOf(a_h.node, a_h.left);
+				}
+				RE::NiTransform shoulder;
+				if (a_h.shoulder && !a_t.vr && RelativeTo(a_h.shoulder, a_t.root, shoulder)) {
+					s.shoulderDist = tip.GetDistance(shoulder.translate);
+				}
+			}
 			if (!a_h.history.empty()) {
 				const auto& last = a_h.history.back();
 				const Vec   lastTip = last.pos + Rotate(last.rot, a_h.axis * (a_h.reach * last.scale));
@@ -2022,6 +2078,9 @@ namespace Trails
 					return;
 				}
 				s.speed = tip.GetDistance(lastTip) / std::max(now - last.time, 1e-4f);
+				if (s.shoulderDist > 0.0f && last.shoulderDist > 0.0f) {
+					s.out = (s.shoulderDist - last.shoulderDist) / std::max(now - last.time, 1e-4f);
+				}
 			}
 			a_h.history.push_back(s);
 			while (!a_h.history.empty() && a_h.history.front().time < now - kHistory) {
@@ -2054,20 +2113,35 @@ namespace Trails
 				const float threshold = tuning.vrSwingSpeed * (a_h.fist ? 0.6f : 1.0f);
 				return Smoothstep(threshold * 0.6f, threshold, a_s.speed);
 			}
-			if (!a_s.window || !a_s.lead) {
+			const std::uint8_t part = a_h.left ? 2 : 1;
+			if (!a_s.window) {
+				return 0.0f;
+			}
+			if (a_s.parts) {
+				if (!(a_s.parts & part)) {
+					return 0.0f;  // a Precision window on the other hand or a foot
+				}
+			} else if (!a_s.lead) {
 				return 0.0f;
 			}
 			const auto past = PastOf(a_t, a_s.attack);
 			if (!past || !(tuning.normalAttacks || past->power)) {
 				return 0.0f;
 			}
-			// the hands the attack names strike; unnamed (combat frameworks name their attacks their own way), the hand
-			// of the swing events strikes, and the other one too when it keeps up with it (a swing with both weapons)
-			if (!(past->hands & (a_h.left ? 2 : 1)) && (past->named || !a_s.strong)) {
+			// without a Precision window naming it: the hands the attack names strike; unnamed (combat frameworks name
+			// their attacks their own way), the hand of the swing events strikes, and the other one too when it keeps up
+			// with it (a swing with both weapons). Fists take names only as a hint (power punches are named "RightHand"
+			// whichever hand throws them): the other fist strikes too when it keeps up.
+			if (!a_s.parts && !(past->hands & part) && ((past->named && !a_h.fist) || !a_s.strong)) {
 				return 0.0f;
 			}
 			const float threshold = std::max(a_h.minSpeed, a_h.strikeSpeed * kStrikeShare);
-			return threshold > 0.0f ? Smoothstep(threshold * 0.6f, threshold, a_s.speed) : 1.0f;
+			float       w = threshold > 0.0f ? Smoothstep(threshold * 0.6f, threshold, a_s.speed) : 1.0f;
+			if (a_h.fist && a_s.shoulderDist > 0.0f) {
+				// a punch goes out (or around, a hook); pulling the arm back afterwards leaves nothing
+				w *= Smoothstep(-0.5f, -0.15f, a_s.out / std::max(a_s.speed, 1.0f));
+			}
+			return w;
 		}
 
 		// ---- a stretch of the swing between two samples
