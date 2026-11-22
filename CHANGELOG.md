@@ -3,7 +3,7 @@
 ## 2.2
 
 - Black and dark colors: trails with a dark color (black, dark red...) are painted with their exact color instead of glowing, so black trails show. Nothing to set up: pick a dark color on the Colors or Weapons page.
-- Arrow trails only: switching "Weapon trails" off now stops the trails of weapons and fists but keeps arrow trails.
+- Weapons, fists and arrows are switched separately: "Weapon trails", "Fists" and "Arrow trails" each turn only their own trails on or off (for example arrow trails only, or fists only).
 - Smoother thin line: it follows the weapon's path as a round curve, without straight pieces and corners in fast swings.
 - Small optimizations of the line.
 

@@ -152,16 +152,18 @@ namespace Menu
 			LanguagePicker(s);
 			Spacing();
 
+			// three switches of their own: weapons, fists, arrows (Arrows below)
 			Changed(Checkbox(Id("Weapon trails").c_str(), &s.enabled));
-			Hint("Trails behind your weapon when you power attack, colored by its enchantment. Off: weapons and fists leave no trails, arrows still do (Arrows below).");
-			if (!s.enabled) {
+			Hint("Trails behind your weapon when you power attack, colored by its enchantment. Fists and arrows have switches of their own.");
+			Changed(Checkbox(Id("Fists").c_str(), &s.fists));
+			Hint("Punches leave trails, from the knuckles, colored by the enchantment of the gauntlets you wear (white without one). On or off whatever the weapon trails are.");
+			const bool melee = s.enabled || s.fists;
+			if (!melee) {
 				BeginDisabled();
 			}
 			Changed(Checkbox(Id("Normal attacks too").c_str(), &s.normalAttacks));
 			Hint("Off: only power attacks leave trails. On: every attack does.");
-			Changed(Checkbox(Id("Fists").c_str(), &s.fists));
-			Hint("Punches leave trails too, from the knuckles, colored by the enchantment of the gauntlets you wear (white without one).");
-			if (!s.enabled) {
+			if (!melee) {
 				EndDisabled();
 			}
 			Changed(Checkbox(Id("NPCs and creatures").c_str(), &s.npcs));

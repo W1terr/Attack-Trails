@@ -1007,13 +1007,13 @@ namespace Trails
 		{
 			if (a_h.fist) {
 				// fists aren't weapons: the weapon filter and list don't apply, only their own switch and the color's
-				a_h.trailOn = tuning.enabled && tuning.fists && BaseOn(a_h.element, a_h.tint);
+				a_h.trailOn = tuning.fists && BaseOn(a_h.element, a_h.tint);
 				a_h.color = BaseColor(a_h.element, a_h.tint);
 				a_h.rule = -1;
 				return;
 			}
 			const auto v = LookAt(a_h.looked, a_h.element, a_h.unique, a_h.tint);
-			a_h.trailOn = tuning.enabled && v.on;  // weapon trails off: only arrows leave trails
+			a_h.trailOn = tuning.enabled && v.on;  // weapons, fists and arrows each have their own switch
 			a_h.color = v.color;
 			a_h.rule = v.rule;
 		}
@@ -3313,7 +3313,7 @@ namespace Trails
 		}
 		const float dt = std::clamp(a_delta, 0.0f, 0.25f);
 		now += dt;
-		if (!tuning.enabled && !tuning.arrows) {
+		if (!tuning.enabled && !tuning.fists && !tuning.arrows) {
 			if (!tracked.empty()) {
 				Reset();
 			}
