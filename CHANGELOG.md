@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2
+
+- Black and dark colors: trails with a dark color (black, dark red...) are painted with their exact color instead of glowing, so black trails show. Nothing to set up: pick a dark color on the Colors or Weapons page.
+- Arrow trails only: switching "Weapon trails" off now stops the trails of weapons and fists but keeps arrow trails.
+- Smoother thin line: it follows the weapon's path as a round curve, without straight pieces and corners in fast swings.
+- Small optimizations of the line.
+
 ## 2.0
 
 - Fist trails: punches leave trails from the knuckles, colored by your gauntlets' enchantment ("Fists" on the Settings page). They work with modded fist movesets too (MCO and others), follow the hand that actually punches and leave nothing while the arm pulls back.

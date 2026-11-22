@@ -10,6 +10,10 @@ res/meshes/AttackTrails/Line.nif: one swing's thin line. A root node "PowerAttac
 "PALine<nn>" and one skinned strip "Line" over them, two vertices per bone at (-1,0,0) and (1,0,0): the plugin puts the
 bones along the path the weapon's edge took, X across it (facing the camera), scaled by the half width.
 
+ParticlesSolid.nif, LineSolid.nif: the same with a blended NiAlphaProperty (4333, threshold 128) instead of the additive
+one: painted over the picture instead of added as light, so dark colors and black show. The plugin uses them for dark
+trail colors.
+
 All shapes: BSEffectShaderProperty (unlit, vertex alpha, double sided, no depth write) and an additive NiAlphaProperty,
 each its own (never shared: the renderer keeps its passes in the shader property); the plugin gives each copy its own
 materials (color, brightness, opacity).
@@ -45,6 +49,7 @@ SLSF2_VERTEX_COLORS = 1 << 5
 SLSF2_NO_FADE = 1 << 3
 
 ALPHA_ADDITIVE = 0x000D  # blend on, src = SRC_ALPHA, dst = ONE
+ALPHA_SOLID = 4333       # blend on, src = SRC_ALPHA, dst = INV_SRC_ALPHA (test func GREATER, test off)
 
 
 def aspect(k):
@@ -178,14 +183,14 @@ class SkinnedShape(nif.BSTriShape):
         return data[:head] + struct.pack("<3ff", *self.bound) + data[head + 16:]
 
 
-def add_shape(f, root, name, texture, bones, mesh, tris, weights, indices):
+def add_shape(f, root, name, texture, bones, mesh, tris, weights, indices, solid=False):
     """a skinned shape with its own effect shader and alpha property"""
     shader = f.add(nif.BSEffectShaderProperty(
         texture, "", base_color=(1.0, 1.0, 1.0, 1.0), base_color_scale=1.0, soft_depth=0.0,
         flags1=SLSF1_SKINNED | SLSF1_VERTEX_ALPHA | SLSF1_ZBUFFER_TEST,
         flags2=SLSF2_DOUBLE_SIDED | SLSF2_VERTEX_COLORS | SLSF2_NO_FADE,
         falloff=(1.0, 1.0, 1.0, 1.0), lighting_influence=0))
-    alpha = f.add(nif.NiAlphaProperty(flags=ALPHA_ADDITIVE, threshold=0))
+    alpha = f.add(nif.NiAlphaProperty(flags=ALPHA_SOLID, threshold=128) if solid else nif.NiAlphaProperty(flags=ALPHA_ADDITIVE, threshold=0))
     shape = f.add(SkinnedShape(name, mesh, tris, shader, alpha, (0.0, 0.0, 0.0, 512.0)))
     # always drawn (the plugin hides what shows nothing)
     shape.flags |= 1 << 11
@@ -195,7 +200,7 @@ def add_shape(f, root, name, texture, bones, mesh, tris, weights, indices):
     root.children.append(shape)
 
 
-def write_particles(path):
+def write_particles(path, solid=False):
     f = nif.File()
     root = f.add(nif.NiNode("PowerAttackParticles"))
     f.roots.append(root)
@@ -203,18 +208,18 @@ def write_particles(path):
     for s in range(SHAPES):
         bones = [f.add(nif.NiNode(f"PAPart{s}_{i:02d}")) for i in range(PER_SHAPE)]
         root.children += bones
-        add_shape(f, root, f"Particles{s}", r"textures\AttackTrails\Particle.dds", bones, mesh, tris, weights, indices)
+        add_shape(f, root, f"Particles{s}", r"textures\AttackTrails\Particle.dds", bones, mesh, tris, weights, indices, solid)
     print(f"wrote {path} ({f.write(path)} bytes)")
 
 
-def write_line(path):
+def write_line(path, solid=False):
     f = nif.File()
     root = f.add(nif.NiNode("PowerAttackLine"))
     f.roots.append(root)
     bones = [f.add(nif.NiNode(f"PALine{i:02d}")) for i in range(LINE_BONES)]
     root.children += bones
     mesh, tris, weights, indices = strip()
-    add_shape(f, root, "Line", r"textures\AttackTrails\Line.dds", bones, mesh, tris, weights, indices)
+    add_shape(f, root, "Line", r"textures\AttackTrails\Line.dds", bones, mesh, tris, weights, indices, solid)
     print(f"wrote {path} ({f.write(path)} bytes)")
 
 
@@ -226,6 +231,8 @@ def main():
     print("wrote Particle.dds, Line.dds")
     write_particles(MESHES / "Particles.nif")
     write_line(MESHES / "Line.nif")
+    write_particles(MESHES / "ParticlesSolid.nif", solid=True)
+    write_line(MESHES / "LineSolid.nif", solid=True)
 
 
 if __name__ == "__main__":

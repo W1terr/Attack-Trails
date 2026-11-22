@@ -153,7 +153,7 @@ namespace Menu
 			Spacing();
 
 			Changed(Checkbox(Id("Weapon trails").c_str(), &s.enabled));
-			Hint("Trails behind your weapon when you power attack, colored by its enchantment.");
+			Hint("Trails behind your weapon when you power attack, colored by its enchantment. Off: weapons and fists leave no trails, arrows still do (Arrows below).");
 			if (!s.enabled) {
 				BeginDisabled();
 			}
@@ -161,8 +161,11 @@ namespace Menu
 			Hint("Off: only power attacks leave trails. On: every attack does.");
 			Changed(Checkbox(Id("Fists").c_str(), &s.fists));
 			Hint("Punches leave trails too, from the knuckles, colored by the enchantment of the gauntlets you wear (white without one).");
+			if (!s.enabled) {
+				EndDisabled();
+			}
 			Changed(Checkbox(Id("NPCs and creatures").c_str(), &s.npcs));
-			Hint("The power attacks of NPCs and creatures near you leave trails too.");
+			Hint("The power attacks and arrows of NPCs and creatures near you leave trails too.");
 			if (!s.npcs) {
 				BeginDisabled();
 			}
@@ -225,10 +228,6 @@ namespace Menu
 				if (!s.vrSwings) {
 					EndDisabled();
 				}
-			}
-
-			if (!s.enabled) {
-				EndDisabled();
 			}
 
 			Spacing();

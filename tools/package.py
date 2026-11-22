@@ -27,6 +27,8 @@ def main():
         "SKSE/Plugins/AttackTrails.dll": plugin / "AttackTrails.dll",
         "meshes/AttackTrails/Particles.nif": res / "meshes" / "AttackTrails" / "Particles.nif",
         "meshes/AttackTrails/Line.nif": res / "meshes" / "AttackTrails" / "Line.nif",
+        "meshes/AttackTrails/ParticlesSolid.nif": res / "meshes" / "AttackTrails" / "ParticlesSolid.nif",
+        "meshes/AttackTrails/LineSolid.nif": res / "meshes" / "AttackTrails" / "LineSolid.nif",
         "textures/AttackTrails/Line.dds": res / "textures" / "AttackTrails" / "Line.dds",
         "textures/AttackTrails/Particle.dds": res / "textures" / "AttackTrails" / "Particle.dds",
     }

@@ -11,14 +11,19 @@ namespace Trails
 
 		constexpr auto        kParticleModel = "AttackTrails\\Particles.nif";
 		constexpr auto        kLineModel = "AttackTrails\\Line.nif";
+		// the same blended (NiAlphaProperty 4333) instead of added as light: for dark colors and black
+		constexpr auto        kSolidParticleModel = "AttackTrails\\ParticlesSolid.nif";
+		constexpr auto        kSolidLineModel = "AttackTrails\\LineSolid.nif";
+		constexpr float       kDark = 0.35f;  // colors with no channel above this are drawn solid
 		constexpr std::size_t kShapes = 4;       // shapes per particle batch (the model's)
 		constexpr std::size_t kPerShape = 64;    // particles per shape, one bone each
 		constexpr std::size_t kPerBatch = kShapes * kPerShape;
 		constexpr std::array<float, kShapes> kShapeBrightness{ 1.0f, 0.65f, 1.3f, 0.85f };
 		constexpr std::size_t kLineBones = 64;   // the line model's
-		constexpr std::size_t kMaxBatches = 64;  // particle batches in use at once, everyone's together
+		constexpr std::size_t kMaxBatches = 64;  // particle batches in use at once, everyone's together (of each kind: glowing, solid)
 		constexpr std::size_t kMaxLines = 32;
-		constexpr std::size_t kLinePoints = 256;  // a line keeps at most this many points of its path
+		constexpr std::size_t kLinePoints = 512;  // a line keeps at most this many points of its path
+		constexpr float       kLineStep = 3.0f;   // units of the edge's path between two of its points
 
 		constexpr float kHistory = 1.6f;        // seconds of samples kept
 		constexpr float kFollowThrough = 0.15f; // the swing window stays open this long after a hit (while the blade is fast)
@@ -263,8 +268,9 @@ namespace Trails
 		// as its particles need; a batch is given back when all its particles burned out and a line when its whole
 		// length faded. Nothing a swing left is ever taken over by the next one.
 
-		RE::NiPointer<RE::NiNode> particleModel;
-		RE::NiPointer<RE::NiNode> lineModel;
+		// [0] glowing (additive), [1] solid (blended: dark colors and black show)
+		std::array<RE::NiPointer<RE::NiNode>, 2> particleModels;
+		std::array<RE::NiPointer<RE::NiNode>, 2> lineModels;
 		bool                      modelsLoaded{ false };
 		bool                      reportedCopy{ false };
 
@@ -353,6 +359,7 @@ namespace Trails
 			std::array<float, 3>                                         color{ 1.0f, 1.0f, 1.0f };
 			RE::NiPointer<RE::NiNode>                                    parent;  // held, so detaching from it is always safe
 			bool                                                         busy{ false };
+			bool                                                         solid{ false };
 		};
 
 		struct LinePoint
@@ -373,46 +380,57 @@ namespace Trails
 			bool                                   open{ false };  // its swing still lays it
 			RE::NiPointer<RE::NiNode>              parent;
 			bool                                   busy{ false };
+			bool                                   solid{ false };
 		};
 
-		std::vector<std::unique_ptr<Batch>> batchPool;
-		std::vector<std::unique_ptr<Line>>  linePool;
+		std::array<std::vector<std::unique_ptr<Batch>>, 2> batchPools;
+		std::array<std::vector<std::unique_ptr<Line>>, 2>  linePools;
 
-		std::unique_ptr<Batch> MakeBatch()
+		// dark colors are drawn with the solid models (added light can't be dark), when they are there
+		bool Solid(const std::array<float, 3>& a_color)
 		{
-			const auto node = Copy(particleModel.get());
+			return particleModels[1] && lineModels[1] && std::max({ a_color[0], a_color[1], a_color[2] }) < kDark;
+		}
+
+		std::unique_ptr<Batch> MakeBatch(bool a_solid)
+		{
+			const auto& model = particleModels[a_solid ? 1 : 0];
+			const auto  node = Copy(model.get());
 			if (!node) {
 				return nullptr;
 			}
 			auto b = std::make_unique<Batch>();
 			b->node.reset(node);
+			b->solid = a_solid;
 			for (std::size_t s = 0; s < kShapes; ++s) {
 				for (std::size_t i = 0; i < kPerShape; ++i) {
 					if (!(b->bones[s][i] = Bone(node, std::format("PAPart{}_{:02}", s, i)))) {
 						return nullptr;
 					}
 				}
-				if (!(b->materials[s] = OwnMaterial(particleModel.get(), node, std::format("Particles{}", s), b->shapes[s]))) {
+				if (!(b->materials[s] = OwnMaterial(model.get(), node, std::format("Particles{}", s), b->shapes[s]))) {
 					return nullptr;
 				}
 			}
 			return b;
 		}
 
-		std::unique_ptr<Line> MakeLine()
+		std::unique_ptr<Line> MakeLine(bool a_solid)
 		{
-			const auto node = Copy(lineModel.get());
+			const auto& model = lineModels[a_solid ? 1 : 0];
+			const auto  node = Copy(model.get());
 			if (!node) {
 				return nullptr;
 			}
 			auto l = std::make_unique<Line>();
 			l->node.reset(node);
+			l->solid = a_solid;
 			for (std::size_t i = 0; i < kLineBones; ++i) {
 				if (!(l->bones[i] = Bone(node, std::format("PALine{:02}", i)))) {
 					return nullptr;
 				}
 			}
-			if (!(l->material = OwnMaterial(lineModel.get(), node, "Line", l->shape))) {
+			if (!(l->material = OwnMaterial(model.get(), node, "Line", l->shape))) {
 				return nullptr;
 			}
 			l->points.reserve(kLinePoints + 8);
@@ -989,13 +1007,13 @@ namespace Trails
 		{
 			if (a_h.fist) {
 				// fists aren't weapons: the weapon filter and list don't apply, only their own switch and the color's
-				a_h.trailOn = tuning.fists && BaseOn(a_h.element, a_h.tint);
+				a_h.trailOn = tuning.enabled && tuning.fists && BaseOn(a_h.element, a_h.tint);
 				a_h.color = BaseColor(a_h.element, a_h.tint);
 				a_h.rule = -1;
 				return;
 			}
 			const auto v = LookAt(a_h.looked, a_h.element, a_h.unique, a_h.tint);
-			a_h.trailOn = v.on;
+			a_h.trailOn = tuning.enabled && v.on;  // weapon trails off: only arrows leave trails
 			a_h.color = v.color;
 			a_h.rule = v.rule;
 		}
@@ -2256,7 +2274,8 @@ namespace Trails
 				}
 			}
 			if (!sp) {
-				auto* b = Take(batchPool, kMaxBatches, MakeBatch, a_root);
+				const bool solid = Solid(a_h.color);
+				auto*      b = Take(batchPools[solid ? 1 : 0], kMaxBatches, [solid] { return MakeBatch(solid); }, a_root);
 				if (!b) {
 					return nullptr;
 				}
@@ -2303,7 +2322,8 @@ namespace Trails
 				a_h.current = nullptr;
 			}
 			if (!a_h.current) {
-				auto* l = Take(linePool, kMaxLines, MakeLine, a_root);
+				const bool solid = Solid(a_h.color);
+				auto*      l = Take(linePools[solid ? 1 : 0], kMaxLines, [solid] { return MakeLine(solid); }, a_root);
 				if (!l) {
 					return nullptr;
 				}
@@ -2320,17 +2340,17 @@ namespace Trails
 		void AddLinePoint(Line& a_l, const Vec& a_pos, float a_time, float a_weight)
 		{
 			a_l.points.push_back({ a_pos, a_time, a_weight });
-			if (a_l.points.size() > kLinePoints) {
+			auto& pts = a_l.points;
+			if (pts.size() > kLinePoints) {
 				// every other point of the older half goes: the line keeps its whole length, a little coarser
-				std::vector<LinePoint> kept;
-				kept.reserve(kLinePoints);
-				const std::size_t half = a_l.points.size() / 2;
-				for (std::size_t i = 0; i < a_l.points.size(); ++i) {
+				const std::size_t half = pts.size() / 2;
+				std::size_t       out = 0;
+				for (std::size_t i = 0; i < pts.size(); ++i) {
 					if (i >= half || i % 2 == 0) {
-						kept.push_back(a_l.points[i]);
+						pts[out++] = pts[i];
 					}
 				}
-				a_l.points = std::move(kept);
+				pts.resize(out);
 			}
 		}
 
@@ -2397,8 +2417,10 @@ namespace Trails
 						if (line->points.empty()) {
 							AddLinePoint(*line, world(stretch.At(edge, 0.0f)), a.time, w);
 						}
-						for (int k = 1; k <= 4; ++k) {
-							const float f = static_cast<float>(k) / 4.0f;
+						// a point every few units of the edge's path (fast parts of the swing get as many as slow ones)
+						const int steps = std::clamp(static_cast<int>(std::ceil(travel / kLineStep)), 2, 24);
+						for (int k = 1; k <= steps; ++k) {
+							const float f = static_cast<float>(k) / static_cast<float>(steps);
 							AddLinePoint(*line, world(stretch.At(edge, f)), stretch.TimeAt(f), w);
 						}
 					}
@@ -2511,12 +2533,13 @@ namespace Trails
 		void SetBatchColors(Batch& a_b)
 		{
 			const auto& c = a_b.color;
-			const Vec   hot = Mix(c, kWhiteCore * 0.6f);  // hotter (whiter) than the color, each shape a little brighter or dimmer
+			// glowing: hotter (whiter) than the color, each shape a little brighter or dimmer; solid: the exact color
+			const Vec   hot = Mix(c, a_b.solid ? 0.0f : kWhiteCore * 0.6f);
 			const float glow = tuning.brightness * tuning.intensity;
 			for (std::size_t s = 0; s < kShapes; ++s) {
 				if (const auto m = a_b.materials[s]) {
 					m->baseColor = { hot.x, hot.y, hot.z, tuning.opacity };
-					m->baseColorScale = glow * kShapeBrightness[s] * 1.3f;
+					m->baseColorScale = a_b.solid ? 1.0f : glow * kShapeBrightness[s] * 1.3f;
 				}
 			}
 		}
@@ -2577,26 +2600,49 @@ namespace Trails
 		bool PlaceLine(Line& a_l, const RE::NiTransform& a_toRoot, const Vec& a_camera)
 		{
 			const float life = 0.9f * tuning.sparkLife;
-			while (!a_l.points.empty() && now - a_l.points.front().time > life) {
-				a_l.points.erase(a_l.points.begin());
-			}
+			const auto faded = std::ranges::find_if(a_l.points, [&](const LinePoint& a_p) { return now - a_p.time <= life; });
+			a_l.points.erase(a_l.points.begin(), faded);
 			const std::size_t n = a_l.points.size();
 			if (n < 2) {
 				a_l.shape->SetAppCulled(true);
 				return a_l.open;
 			}
 			a_l.shape->SetAppCulled(false);
+			const auto& pts = a_l.points;
+			// the length along the path up to each point: the bones are spread evenly over the length (not over the
+			// points, which crowd where the swing is slow and leave long straight chords where it is fast)
+			static thread_local std::vector<float> length;
+			length.resize(n);
+			length[0] = 0.0f;
+			for (std::size_t j = 1; j < n; ++j) {
+				length[j] = length[j - 1] + pts[j].pos.GetDistance(pts[j - 1].pos);
+			}
+			const float total = length[n - 1];
+			std::size_t j = 0;
 			for (std::size_t i = 0; i < kLineBones; ++i) {
-				const float       at = static_cast<float>(i) / static_cast<float>(kLineBones - 1) * static_cast<float>(n - 1);
-				const std::size_t j = std::min(static_cast<std::size_t>(at), n - 2);
-				const float       f = at - static_cast<float>(j);
-				const auto&       p0 = a_l.points[j];
-				const auto&       p1 = a_l.points[j + 1];
-				const Vec         pos = Lerp(p0.pos, p1.pos, f);
-				const float       age = now - (p0.time + (p1.time - p0.time) * f);
-				const float       weight = std::min(p0.weight + (p1.weight - p0.weight) * f, 1.0f);
-				const Vec         along = Normalized(p1.pos - p0.pos, { 0.0f, 0.0f, 1.0f });
-				Vec               side = along.Cross(a_camera - pos);
+				const float at = total * static_cast<float>(i) / static_cast<float>(kLineBones - 1);
+				while (j + 2 < n && length[j + 1] < at) {
+					++j;
+				}
+				const float span = length[j + 1] - length[j];
+				const float f = span > 1e-5f ? std::clamp((at - length[j]) / span, 0.0f, 1.0f) : 0.0f;
+				const auto& p0 = pts[j];
+				const auto& p1 = pts[j + 1];
+				// a curve through the points (Hermite, slopes from the neighbours weighted by the distances, so uneven
+				// spacing doesn't overshoot): round where the path bends, no corners
+				const Vec&  q0 = j > 0 ? pts[j - 1].pos : p0.pos;
+				const Vec&  q3 = j + 2 < n ? pts[j + 2].pos : p1.pos;
+				const float d0 = j > 0 ? length[j] - length[j - 1] : span;
+				const float d2 = j + 2 < n ? length[j + 2] - length[j + 1] : span;
+				const Vec   m0 = (p1.pos - q0) * (span / std::max(d0 + span, 1e-5f));
+				const Vec   m1 = (q3 - p0.pos) * (span / std::max(span + d2, 1e-5f));
+				const float f2 = f * f, f3 = f2 * f;
+				const Vec   pos = p0.pos * (2.0f * f3 - 3.0f * f2 + 1.0f) + m0 * (f3 - 2.0f * f2 + f) + p1.pos * (-2.0f * f3 + 3.0f * f2) + m1 * (f3 - f2);
+				const Vec   slope = p0.pos * (6.0f * f2 - 6.0f * f) + m0 * (3.0f * f2 - 4.0f * f + 1.0f) + p1.pos * (-6.0f * f2 + 6.0f * f) + m1 * (3.0f * f2 - 2.0f * f);
+				const float age = now - (p0.time + (p1.time - p0.time) * f);
+				const float weight = std::min(p0.weight + (p1.weight - p0.weight) * f, 1.0f);
+				const Vec   along = Normalized(slope, Normalized(p1.pos - p0.pos, { 0.0f, 0.0f, 1.0f }));
+				Vec         side = along.Cross(a_camera - pos);
 				if (side.Unitize() < 1e-4f) {
 					side = Normalized(along.Cross(Vec{ 0.0f, 0.0f, 1.0f }), Vec{ 1.0f, 0.0f, 0.0f });
 				}
@@ -2609,9 +2655,9 @@ namespace Trails
 				a_l.bones[i]->local = a_toRoot * world;
 			}
 			const auto& c = a_l.color;
-			const Vec   hot = Mix(c, kLineWhite);
+			const Vec   hot = Mix(c, a_l.solid ? 0.0f : kLineWhite);
 			a_l.material->baseColor = { hot.x, hot.y, hot.z, tuning.opacity };
-			a_l.material->baseColorScale = tuning.brightness * tuning.intensity;
+			a_l.material->baseColorScale = a_l.solid ? 1.0f : tuning.brightness * tuning.intensity;
 			a_l.node->local = RE::NiTransform{};
 			RE::NiUpdateData update{};
 			a_l.node->Update(update);
@@ -3203,12 +3249,12 @@ namespace Trails
 			}
 		}
 
-		RE::NiPointer<RE::NiNode> Load(const char* a_path)
+		RE::NiPointer<RE::NiNode> Load(const char* a_path, const char* a_without = "no trails")
 		{
 			RE::NiPointer<RE::NiNode>         loaded;
 			RE::BSModelDB::DBTraits::ArgsType args{};
 			if (RE::BSModelDB::Demand(a_path, loaded, args) != RE::BSResource::ErrorCode::kNone || !loaded) {
-				logs::error("couldn't load meshes\\{} (is the whole mod installed?): no trails", a_path);
+				logs::error("couldn't load meshes\\{} (is the whole mod installed?): {}", a_path, a_without);
 				return nullptr;
 			}
 			return loaded;
@@ -3217,11 +3263,13 @@ namespace Trails
 
 	void Init()
 	{
-		particleModel = Load(kParticleModel);
-		lineModel = Load(kLineModel);
-		if (!particleModel || !lineModel) {
+		particleModels[0] = Load(kParticleModel);
+		lineModels[0] = Load(kLineModel);
+		if (!particleModels[0] || !lineModels[0]) {
 			return;
 		}
+		particleModels[1] = Load(kSolidParticleModel, "dark colors glow like the others");
+		lineModels[1] = Load(kSolidLineModel, "dark colors glow like the others");
 		modelsLoaded = true;
 		RefreshTuning();
 		FindLoot();
@@ -3229,22 +3277,23 @@ namespace Trails
 		FindSoulTrapForms();
 		// a few made ahead (copying a model mid-fight could hitch), and a check that copies work at all
 		for (int i = 0; i < 8; ++i) {
-			auto b = MakeBatch();
+			auto b = MakeBatch(false);
 			if (!b) {
 				modelsLoaded = false;
 				return;
 			}
-			batchPool.push_back(std::move(b));
+			batchPools[0].push_back(std::move(b));
 		}
 		for (int i = 0; i < 4; ++i) {
-			auto l = MakeLine();
+			auto l = MakeLine(false);
 			if (!l) {
 				modelsLoaded = false;
 				return;
 			}
-			linePool.push_back(std::move(l));
+			linePools[0].push_back(std::move(l));
 		}
-		logs::info("models loaded: {} particle batches ({} particles each) and {} lines made ahead", batchPool.size(), kPerBatch, linePool.size());
+		logs::info("models loaded: {} particle batches ({} particles each) and {} lines made ahead{}", batchPools[0].size(), kPerBatch, linePools[0].size(),
+			particleModels[1] && lineModels[1] ? ", solid models for dark colors" : "");
 	}
 
 	void Reset()
@@ -3264,7 +3313,7 @@ namespace Trails
 		}
 		const float dt = std::clamp(a_delta, 0.0f, 0.25f);
 		now += dt;
-		if (!tuning.enabled) {
+		if (!tuning.enabled && !tuning.arrows) {
 			if (!tracked.empty()) {
 				Reset();
 			}
