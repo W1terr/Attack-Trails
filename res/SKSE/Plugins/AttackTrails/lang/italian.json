@@ -128,5 +128,22 @@
 	"Other enchantments": "Altri incantamenti",
 	"All weapons": "Tutte le armi",
 	"Unique weapons only": "Solo armi uniche",
-	"Only the weapons in the list": "Solo le armi nella lista"
+	"Only the weapons in the list": "Solo le armi nella lista",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision disegna scie proprie durante i colpi d'arma. Scegli quale mod le disegna, per le armi senza incantamento e per quelle incantate: la scia dell'altra mod viene omessa. Pugni e frecce hanno solo queste scie.",
+	"Precision is not loaded: these choices do nothing.": "Precision non è caricato: queste scelte non hanno effetto.",
+	"Which trails": "Quali scie",
+	"Weapons without enchantment": "Armi senza incantamento",
+	"Enchanted weapons": "Armi incantate",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "Le armi evocate e spettrali contano come incantate, così come le armi della lista con un colore proprio.",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "Solo Attack Trails: le scie di Precision vengono nascoste e queste seguono le altre pagine (un attacco normale senza «Anche attacchi normali» non lascia alcuna scia).",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "Solo Precision: decidono le impostazioni di Precision (le sue scie si disattivano nel suo menu).",
+	"enchanted": "incantata",
+	"no enchantment": "senza incantamento",
+	"both trails": "entrambe le scie",
+	"Attack Trails' trail": "scia di Attack Trails",
+	"Precision's trail": "scia di Precision",
+	"Both": "Entrambe",
+	"Attack Trails only": "Solo Attack Trails",
+	"Precision only": "Solo Precision"
 }

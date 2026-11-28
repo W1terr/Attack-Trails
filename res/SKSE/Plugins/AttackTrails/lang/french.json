@@ -128,5 +128,22 @@
 	"Other enchantments": "Autres enchantements",
 	"All weapons": "Toutes les armes",
 	"Unique weapons only": "Armes uniques seulement",
-	"Only the weapons in the list": "Seulement les armes de la liste"
+	"Only the weapons in the list": "Seulement les armes de la liste",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision dessine ses propres traînées lors des coups d'arme. Choisissez quel mod les dessine, pour les armes sans enchantement et pour les armes enchantées : la traînée de l'autre mod est retirée. Les poings et les flèches n'ont que ces traînées-ci.",
+	"Precision is not loaded: these choices do nothing.": "Precision n'est pas chargé : ces choix n'ont aucun effet.",
+	"Which trails": "Quelles traînées",
+	"Weapons without enchantment": "Armes sans enchantement",
+	"Enchanted weapons": "Armes enchantées",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "Les armes invoquées et spectrales comptent comme enchantées, de même que les armes de la liste d'armes qui ont leur propre couleur.",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "Attack Trails seulement : les traînées de Precision sont cachées, et celles-ci suivent les autres pages (une attaque normale sans « Attaques normales aussi » ne laisse aucune traînée).",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "Precision seulement : ce sont les paramètres de Precision qui décident (ses traînées se désactivent dans son menu).",
+	"enchanted": "enchantée",
+	"no enchantment": "sans enchantement",
+	"both trails": "les deux traînées",
+	"Attack Trails' trail": "traînée d'Attack Trails",
+	"Precision's trail": "traînée de Precision",
+	"Both": "Les deux",
+	"Attack Trails only": "Attack Trails seulement",
+	"Precision only": "Precision seulement"
 }

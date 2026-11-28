@@ -128,5 +128,22 @@
 	"Other enchantments": "其他附魔",
 	"All weapons": "所有武器",
 	"Unique weapons only": "僅獨特武器",
-	"Only the weapons in the list": "僅清單中的武器"
+	"Only the weapons in the list": "僅清單中的武器",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision 在揮動武器時會繪製自己的軌跡。請為無附魔武器與附魔武器分別選擇由哪個模組繪製：另一個模組的軌跡會被省略。拳頭與箭矢只有本模組的軌跡。",
+	"Precision is not loaded: these choices do nothing.": "未載入 Precision：這些選項沒有作用。",
+	"Which trails": "使用哪種軌跡",
+	"Weapons without enchantment": "無附魔武器",
+	"Enchanted weapons": "附魔武器",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "召喚武器與幽靈武器視為附魔武器，武器清單中有自訂顏色的武器也是。",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "僅 Attack Trails：Precision 的軌跡會被隱藏，本模組的軌跡依照其他頁面的設定（關閉「一般攻擊也有」時，普通攻擊完全沒有軌跡）。",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "僅 Precision：由 Precision 自己的設定決定（其軌跡可在它的選單中關閉）。",
+	"enchanted": "已附魔",
+	"no enchantment": "無附魔",
+	"both trails": "兩種軌跡",
+	"Attack Trails' trail": "Attack Trails 的軌跡",
+	"Precision's trail": "Precision 的軌跡",
+	"Both": "兩者",
+	"Attack Trails only": "僅 Attack Trails",
+	"Precision only": "僅 Precision"
 }

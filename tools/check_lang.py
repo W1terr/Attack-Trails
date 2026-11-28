@@ -1,7 +1,7 @@
 """Checks the translations in res/SKSE/Plugins/AttackTrails/lang against the texts the menu shows.
 
 The English texts are the keys: every string literal in Menu.cpp except ImGui ids, number formats and log lines, and
-the names in Settings.h (kElementNames, kWeaponFilterNames).
+the names in Settings.h (kElementNames, kWeaponFilterNames, kPrecisionChoiceNames).
 Reports keys missing from a language file, keys the code no longer uses and broken {} placeholders.
 usage: python check_lang.py [--keys]   (--keys: print the keys, one per line)
 """
@@ -17,7 +17,7 @@ LIT = r'"((?:[^"\\]|\\.)*)"'
 
 # literals in Menu.cpp that are not shown text
 NOT_TEXT = {"Attack Trails", "x", "", "auto", "(?)", "colors", "weapons", "enchantments", "RenameSection",
-            "SKSEMenuFramework.h", "Menu.h", "Lang.h", "Settings.h", "Trails.h"}
+            "SKSEMenuFramework.h", "Menu.h", "Lang.h", "Settings.h", "Trails.h", "Precision.h"}
 
 
 def literals(text):
@@ -34,7 +34,7 @@ def code_keys():
             continue  # log lines
         found.append(lit)
     settings = (ROOT / "src" / "Settings.h").read_text(encoding="utf-8")
-    for name in ("kElementNames", "kWeaponFilterNames"):
+    for name in ("kElementNames", "kWeaponFilterNames", "kPrecisionChoiceNames"):
         found += literals(re.search(name + r"\{([^}]*)\}", settings).group(1))
     keys = []
     for key in found:

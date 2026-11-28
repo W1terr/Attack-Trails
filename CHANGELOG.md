@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3
+
+- Precision page: choose which mod draws the trails, for weapons without an enchantment and for enchanted ones: both, Attack Trails only (Precision's trail is hidden) or Precision only. For example Precision's trails on ordinary weapons and only these on enchanted ones.
+
 ## 2.2
 
 - Black and dark colors: trails with a dark color (black, dark red...) are painted with their exact color instead of glowing, so black trails show. Nothing to set up: pick a dark color on the Colors or Weapons page.

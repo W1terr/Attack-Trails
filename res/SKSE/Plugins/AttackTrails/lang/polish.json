@@ -128,5 +128,22 @@
 	"Other enchantments": "Inne zaklęcia",
 	"All weapons": "Wszystkie bronie",
 	"Unique weapons only": "Tylko unikatowe bronie",
-	"Only the weapons in the list": "Tylko bronie z listy"
+	"Only the weapons in the list": "Tylko bronie z listy",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision rysuje własne smugi przy zamachach bronią. Wybierz, który mod je rysuje, dla broni bez zaklęcia i dla zaklętej: smuga drugiego moda zostaje pominięta. Pięści i strzały mają tylko te smugi.",
+	"Precision is not loaded: these choices do nothing.": "Precision nie jest wczytany: te wybory nic nie zmieniają.",
+	"Which trails": "Które smugi",
+	"Weapons without enchantment": "Broń bez zaklęcia",
+	"Enchanted weapons": "Broń zaklęta",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "Przywołana i widmowa broń liczy się jako zaklęta, podobnie jak bronie z listy broni z własnym kolorem.",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "Tylko Attack Trails: smugi Precision są ukryte, a te działają według pozostałych stron (zwykły atak przy wyłączonych „Także zwykłe ataki” nie zostawia żadnej smugi).",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "Tylko Precision: decydują ustawienia Precision (jego smugi można wyłączyć w jego menu).",
+	"enchanted": "zaklęta",
+	"no enchantment": "bez zaklęcia",
+	"both trails": "obie smugi",
+	"Attack Trails' trail": "smuga Attack Trails",
+	"Precision's trail": "smuga Precision",
+	"Both": "Obie",
+	"Attack Trails only": "Tylko Attack Trails",
+	"Precision only": "Tylko Precision"
 }

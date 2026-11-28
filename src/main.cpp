@@ -1,6 +1,7 @@
 #include "Hooks.h"
 #include "Lang.h"
 #include "Menu.h"
+#include "Precision.h"
 #include "Settings.h"
 #include "Trails.h"
 
@@ -9,6 +10,9 @@ namespace
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
 	{
 		switch (a_msg->type) {
+		case SKSE::MessagingInterface::kPostLoad:
+			Precision::Install();  // every plugin's DLL is loaded by now
+			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			Trails::Init();
 			Lang::Set(Settings::Get().language);

@@ -33,6 +33,7 @@ namespace Trails
 		bool                 unique{ false };   // counts as a unique weapon
 		bool                 listed{ false };   // in the weapon list
 		bool                 trailOn{ false };  // the settings let it leave trails
+		bool                 colored{ false };  // counts as enchanted on the Precision page
 		std::array<float, 3> color{ 1.0f, 1.0f, 1.0f };
 		std::string          plugin;            // where the weapon comes from (its first file)
 		std::uint32_t        id{ 0 };           // its id in that plugin

@@ -106,6 +106,16 @@ namespace Settings
 		bool operator==(const EnchantmentRule&) const = default;
 	};
 
+	// Precision (by Ershin) draws trails of its own on weapon swings: which mod draws them, for two kinds of weapons
+	enum PrecisionChoice : int
+	{
+		kBothTrails,       // both mods' trails
+		kOwnTrails,        // only these trails: Precision's are hidden
+		kPrecisionTrails,  // only Precision's: these are left out
+		kPrecisionChoices
+	};
+	inline constexpr std::array<const char*, kPrecisionChoices> kPrecisionChoiceNames{ "Both", "Attack Trails only", "Precision only" };
+
 	struct Values
 	{
 		bool enabled{ true };
@@ -140,6 +150,11 @@ namespace Settings
 		// arrows shot from a bow held drawn long enough
 		bool  arrows{ true };
 		float arrowHold{ 1.0f };  // seconds the bow is held fully drawn before the shot
+
+		// Precision's trails: for weapons without an enchantment, and for enchanted ones (bound and ghost weapons and
+		// listed weapons with a color of their own count as enchanted)
+		int precisionPlain{ kBothTrails };
+		int precisionEnchanted{ kBothTrails };
 
 		// VR: your swings are your own motion (no attack animations): a fast enough swing leaves a trail
 		bool  vrSwings{ true };

@@ -3,7 +3,7 @@ includes("lib/commonlibsse-ng")
 
 -- set project constants
 set_project("AttackTrails")
-set_version("2.2.0")
+set_version("2.3.0")
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")
@@ -12,17 +12,18 @@ set_warnings("allextra")
 add_rules("mode.debug", "mode.releasedbg")
 
 add_requires("nlohmann_json")
+add_requires("microsoft-detours")
 
 -- define targets
 target("AttackTrails")
-    set_version("2.2.0")
+    set_version("2.3.0")
     add_rules("commonlibsse-ng.plugin", {
         name = "AttackTrails",
         author = "W1ter",
         description = "Crimson Desert style weapon and arrow trails"
     })
 
-    add_packages("nlohmann_json")
+    add_packages("nlohmann_json", "microsoft-detours")
 
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")

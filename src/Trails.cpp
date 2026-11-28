@@ -1,6 +1,7 @@
 #include "Trails.h"
 
 #include "Attacks.h"
+#include "Precision.h"
 
 namespace Trails
 {
@@ -255,6 +256,20 @@ namespace Trails
 		}
 
 		bool Debug() { return tuning.debugLog; }
+
+		// ---- Precision's trails: which mod draws a weapon's trail
+
+		// enchanted for the Precision page: any trail kind but "no enchantment" (bound and ghost weapons too), or a
+		// listed weapon with a color of its own
+		bool Colored(Element a_element, int a_rule)
+		{
+			return a_element != Settings::kPlain || (a_rule >= 0 && tuning.weapons[static_cast<std::size_t>(a_rule)].ownColor);
+		}
+
+		int PrecisionChoiceFor(bool a_colored)
+		{
+			return Precision::Found() ? (a_colored ? tuning.precisionEnchanted : tuning.precisionPlain) : Settings::kBothTrails;
+		}
 
 		Vec Mix(const std::array<float, 3>& a_color, float a_white)
 		{
@@ -1014,6 +1029,9 @@ namespace Trails
 			}
 			const auto v = LookAt(a_h.looked, a_h.element, a_h.unique, a_h.tint);
 			a_h.trailOn = tuning.enabled && v.on;  // weapons, fists and arrows each have their own switch
+			if (PrecisionChoiceFor(Colored(a_h.element, v.rule)) == Settings::kPrecisionTrails) {
+				a_h.trailOn = false;  // Precision draws this one (it has no trails for fists and arrows)
+			}
 			a_h.color = v.color;
 			a_h.rule = v.rule;
 		}
@@ -3230,6 +3248,7 @@ namespace Trails
 					out.listed = h.rule >= 0;
 					out.trailOn = h.trailOn;
 					out.color = h.color;
+					out.colored = Colored(h.element, h.rule);
 					const auto file = w->GetFile(0);
 					out.plugin = file ? file->GetFilename() : "";
 					out.id = file && file->IsLight() ? w->GetFormID() & 0xFFF : w->GetFormID() & 0xFFFFFF;
@@ -3247,6 +3266,82 @@ namespace Trails
 				t->attack = 0;
 				t->root = nullptr;
 			}
+		}
+
+		// Precision's trails hidden because their weapons are set to these trails only, until they're done
+		struct HiddenTrail
+		{
+			RE::NiPointer<RE::BSTempEffectParticle> trail;
+			float                                   age{ 0.0f };
+		};
+		std::vector<HiddenTrail> hiddenTrails;
+
+		// the actor whose skeleton a node hangs in
+		RE::Actor* OwnerOf(const RE::NiAVObject* a_node)
+		{
+			const auto player = RE::PlayerCharacter::GetSingleton();
+			const auto firstPerson = player ? player->Get3D(true) : nullptr;
+			for (auto n = a_node; n; n = n->parent) {
+				if (const auto ref = n->GetUserData()) {
+					return ref->As<RE::Actor>();
+				}
+				if (firstPerson && n == firstPerson) {
+					return player;
+				}
+			}
+			return nullptr;
+		}
+
+		// what Precision's trail on this hand counts as (it looks at the same equipped weapon)
+		bool WeaponColored(RE::Actor* a_actor, bool a_left)
+		{
+			const auto form = a_actor->GetEquippedObject(a_left);
+			const auto weapon = form ? form->As<RE::TESObjectWEAP>() : nullptr;
+			if (!weapon) {
+				return false;
+			}
+			const auto found = ruleOf.find(weapon->GetFormID());
+			const int  rule = found != ruleOf.end() ? static_cast<int>(found->second) : -1;
+			return Colored(ElementOf(a_actor, weapon, EnchantmentOf(a_actor, a_left, weapon)), rule);
+		}
+
+		void WatchPrecision(float a_dt)
+		{
+			if (!Precision::Found()) {
+				return;
+			}
+			const bool anyOwn = tuning.precisionPlain == Settings::kOwnTrails || tuning.precisionEnchanted == Settings::kOwnTrails;
+			Precision::SetHideAtOnce(anyOwn);
+			for (auto& s : Precision::Take()) {
+				const std::string_view name = s.node->name.c_str();
+				const bool             left = name == "SHIELD"sv;
+				bool                   hide = false;
+				RE::Actor*             actor = nullptr;
+				if (anyOwn && (left || name == "WEAPON"sv)) {
+					actor = OwnerOf(s.node.get());
+					hide = actor && PrecisionChoiceFor(WeaponColored(actor, left)) == Settings::kOwnTrails;
+				}
+				if (Debug()) {
+					logs::info("Precision trail on {} of {:08X}: {}", name, actor ? actor->GetFormID() : 0, hide ? "hidden" : "shown");
+				}
+				if (hide) {
+					hiddenTrails.push_back({ std::move(s.trail) });
+				} else if (s.hiddenAtOnce && s.trail->particleObject) {
+					s.trail->particleObject->SetAppCulled(false);
+				}
+			}
+			// hidden for as long as they live: the model may come after the spawn
+			std::erase_if(hiddenTrails, [&](HiddenTrail& a_h) {
+				a_h.age += a_dt;
+				const auto& t = a_h.trail;
+				if (t->GetRefCount() <= 1 || t->age >= t->lifetime || a_h.age > 15.0f) {
+					return true;  // Precision and the game are done with it
+				}
+				if (t->particleObject) {
+					t->particleObject->SetAppCulled(true);
+				}
+				return false;
+			});
 		}
 
 		RE::NiPointer<RE::NiNode> Load(const char* a_path, const char* a_without = "no trails")
@@ -3300,6 +3395,7 @@ namespace Trails
 	{
 		DropAll();
 		tracked.clear();
+		hiddenTrails.clear();
 		Attacks::Clear();
 		npcScanIn = 0.0f;
 	}
@@ -3307,11 +3403,12 @@ namespace Trails
 	void Frame(float a_delta)
 	{
 		RefreshTuning();
+		const float dt = std::clamp(a_delta, 0.0f, 0.25f);
+		WatchPrecision(dt);  // even with every trail of this mod off: Precision's may be hidden
 		const auto player = RE::PlayerCharacter::GetSingleton();
 		if (!modelsLoaded || !player) {
 			return;
 		}
-		const float dt = std::clamp(a_delta, 0.0f, 0.25f);
 		now += dt;
 		if (!tuning.enabled && !tuning.fists && !tuning.arrows) {
 			if (!tracked.empty()) {

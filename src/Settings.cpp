@@ -8,7 +8,7 @@ namespace Settings
 	{
 		using json = nlohmann::json;
 
-		constexpr int kVersion = 7;
+		constexpr int kVersion = 8;
 
 		constexpr std::array<const char*, kElements> kKeys{ "plain", "fire", "frost", "shock", "chaos", "health", "magicka", "stamina", "soulTrap",
 			"paralysis", "fear", "turnUndead", "banish", "calm", "frenzy", "bound", "ghost", "other" };
@@ -40,6 +40,21 @@ namespace Settings
 		}
 
 		constexpr std::array<const char*, kWeaponFilters> kFilterKeys{ "all", "unique", "listed" };
+		constexpr std::array<const char*, kPrecisionChoices> kPrecisionKeys{ "both", "attackTrails", "precision" };
+
+		void ReadPrecision(const json& a_root, Values& a_values)
+		{
+			const auto it = a_root.find("precision");
+			if (it == a_root.end() || !it->is_object()) {
+				return;
+			}
+			for (const auto& [key, value] : { std::pair{ "plain", &a_values.precisionPlain }, std::pair{ "enchanted", &a_values.precisionEnchanted } }) {
+				if (const auto entry = it->find(key); entry != it->end() && entry->is_string()) {
+					const auto found = std::ranges::find(kPrecisionKeys, entry->get<std::string>());
+					*value = found != kPrecisionKeys.end() ? static_cast<int>(found - kPrecisionKeys.begin()) : kBothTrails;
+				}
+			}
+		}
 
 		std::uint32_t ParseId(const json& a_value)
 		{
@@ -124,6 +139,8 @@ namespace Settings
 		void Clamp(Values& a_values)
 		{
 			a_values.weaponFilter = std::clamp(a_values.weaponFilter, 0, kWeaponFilters - 1);
+			a_values.precisionPlain = std::clamp(a_values.precisionPlain, 0, kPrecisionChoices - 1);
+			a_values.precisionEnchanted = std::clamp(a_values.precisionEnchanted, 0, kPrecisionChoices - 1);
 			for (auto& rule : a_values.weapons) {
 				for (auto& c : rule.color) {
 					c = std::clamp(c, 0.0f, 1.0f);
@@ -195,6 +212,7 @@ namespace Settings
 			Read(root, "language", values.language);
 			ReadWeapons(root, values);
 			ReadEnchantments(root, values);
+			ReadPrecision(root, values);
 			Read(root, "glowColors", values.glowColors);
 			if (const auto it = root.find("colors"); it != root.end() && it->is_object()) {
 				for (std::size_t e = 0; e < kElements; ++e) {
@@ -246,6 +264,8 @@ namespace Settings
 			{ "line", values.line },
 			{ "arrows", values.arrows },
 			{ "arrowHold", values.arrowHold },
+			{ "precision", { { "plain", kPrecisionKeys[static_cast<std::size_t>(values.precisionPlain)] },
+							   { "enchanted", kPrecisionKeys[static_cast<std::size_t>(values.precisionEnchanted)] } } },
 			{ "vrSwings", values.vrSwings },
 			{ "vrSwingSpeed", values.vrSwingSpeed },
 			{ "colors", colors },

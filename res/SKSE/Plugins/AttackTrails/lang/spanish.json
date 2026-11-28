@@ -128,5 +128,22 @@
 	"Other enchantments": "Otros encantamientos",
 	"All weapons": "Todas las armas",
 	"Unique weapons only": "Solo armas únicas",
-	"Only the weapons in the list": "Solo las armas de la lista"
+	"Only the weapons in the list": "Solo las armas de la lista",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision dibuja sus propias estelas en los golpes de arma. Elige qué mod las dibuja, para las armas sin encantamiento y para las encantadas: la estela del otro mod se omite. Los puños y las flechas solo tienen estas estelas.",
+	"Precision is not loaded: these choices do nothing.": "Precision no está cargado: estas opciones no hacen nada.",
+	"Which trails": "Qué estelas",
+	"Weapons without enchantment": "Armas sin encantamiento",
+	"Enchanted weapons": "Armas encantadas",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "Las armas vinculadas y fantasmales cuentan como encantadas, igual que las armas de la lista con un color propio.",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "Solo Attack Trails: las estelas de Precision se ocultan y estas siguen las demás páginas (un ataque normal sin «También ataques normales» no deja ninguna estela).",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "Solo Precision: deciden los ajustes de Precision (sus estelas se desactivan en su menú).",
+	"enchanted": "encantada",
+	"no enchantment": "sin encantamiento",
+	"both trails": "ambas estelas",
+	"Attack Trails' trail": "estela de Attack Trails",
+	"Precision's trail": "estela de Precision",
+	"Both": "Ambas",
+	"Attack Trails only": "Solo Attack Trails",
+	"Precision only": "Solo Precision"
 }

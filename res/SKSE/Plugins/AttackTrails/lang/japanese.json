@@ -128,5 +128,22 @@
 	"Other enchantments": "その他の付呪",
 	"All weapons": "すべての武器",
 	"Unique weapons only": "ユニーク武器のみ",
-	"Only the weapons in the list": "リストの武器のみ"
+	"Only the weapons in the list": "リストの武器のみ",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision は武器を振ると独自の軌跡を描きます。付呪なしの武器と付呪された武器のそれぞれで、どちらの MOD が描くかを選んでください：もう一方の MOD の軌跡は表示されません。拳と矢にはこの MOD の軌跡しかありません。",
+	"Precision is not loaded: these choices do nothing.": "Precision が読み込まれていません：この選択は効果がありません。",
+	"Which trails": "どの軌跡",
+	"Weapons without enchantment": "付呪なしの武器",
+	"Enchanted weapons": "付呪された武器",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "召喚武器と幽霊の武器は付呪ありとして扱われます。独自の色を持つ武器リストの武器も同様です。",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "Attack Trails のみ：Precision の軌跡は隠され、この MOD の軌跡は他のページの設定に従います（「通常攻撃も」がオフなら通常攻撃には軌跡が出ません）。",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "Precision のみ：Precision 自身の設定に従います（その軌跡は Precision のメニューでオフにできます）。",
+	"enchanted": "付呪あり",
+	"no enchantment": "付呪なし",
+	"both trails": "両方の軌跡",
+	"Attack Trails' trail": "Attack Trails の軌跡",
+	"Precision's trail": "Precision の軌跡",
+	"Both": "両方",
+	"Attack Trails only": "Attack Trails のみ",
+	"Precision only": "Precision のみ"
 }

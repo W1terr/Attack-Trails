@@ -128,5 +128,22 @@
 	"Other enchantments": "Другие зачарования",
 	"All weapons": "Всё оружие",
 	"Unique weapons only": "Только уникальное оружие",
-	"Only the weapons in the list": "Только оружие из списка"
+	"Only the weapons in the list": "Только оружие из списка",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision рисует собственные следы при взмахах оружием. Выберите, какой мод их рисует, для оружия без зачарования и для зачарованного: след другого мода убирается. У кулаков и стрел есть только эти следы.",
+	"Precision is not loaded: these choices do nothing.": "Precision не загружен: этот выбор ни на что не влияет.",
+	"Which trails": "Чьи следы",
+	"Weapons without enchantment": "Оружие без зачарования",
+	"Enchanted weapons": "Зачарованное оружие",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "Призванное и призрачное оружие считается зачарованным, как и оружие из списка оружия со своим цветом.",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "Только Attack Trails: следы Precision скрываются, а эти следуют настройкам других страниц (обычная атака при выключенном «И обычные атаки» не оставит следа вовсе).",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "Только Precision: решают настройки самого Precision (его следы отключаются в его меню).",
+	"enchanted": "зачарованное",
+	"no enchantment": "без зачарования",
+	"both trails": "оба следа",
+	"Attack Trails' trail": "след Attack Trails",
+	"Precision's trail": "след Precision",
+	"Both": "Оба",
+	"Attack Trails only": "Только Attack Trails",
+	"Precision only": "Только Precision"
 }

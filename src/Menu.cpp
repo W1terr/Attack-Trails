@@ -10,6 +10,7 @@
 #include "Menu.h"
 
 #include "Lang.h"
+#include "Precision.h"
 #include "Settings.h"
 #include "Trails.h"
 
@@ -74,6 +75,7 @@ namespace Menu
 		void __stdcall RenderSettings();
 		void __stdcall RenderColors();
 		void __stdcall RenderWeapons();
+		void __stdcall RenderPrecision();
 
 		struct Page
 		{
@@ -85,6 +87,7 @@ namespace Menu
 			Page{ "Settings", RenderSettings, {} },
 			Page{ "Colors", RenderColors, {} },
 			Page{ "Weapons", RenderWeapons, {} },
+			Page{ "Precision", RenderPrecision, {} },
 		};
 
 		// exported by SKSE Menu Framework 3.8+, not in its header: renames a page at runtime
@@ -769,6 +772,66 @@ namespace Menu
 				SameLine();
 				TextDisabled("%s", std::format("{} {:06X}", f.plugin, f.id).c_str());
 				PopID();
+			}
+			SaveIfDue();
+		}
+
+		void __stdcall RenderPrecision()
+		{
+			std::scoped_lock guard(Settings::Lock());
+			auto&            s = Settings::Get();
+
+			TextWrapped("%s", T("Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails."));
+			if (!Precision::Found()) {
+				TextColored(kWarn, "%s", T("Precision is not loaded: these choices do nothing."));
+			}
+
+			Heading("Which trails");
+			struct Row
+			{
+				const char* english;
+				int*        value;
+			};
+			const std::array<Row, 2> rows{ Row{ "Weapons without enchantment", &s.precisionPlain }, Row{ "Enchanted weapons", &s.precisionEnchanted } };
+			for (const auto& row : rows) {
+				Text("%s", T(row.english));
+				if (row.value == &s.precisionEnchanted) {
+					Hint("Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.");
+				}
+				Indent();
+				for (int c = 0; c < Settings::kPrecisionChoices; ++c) {
+					if (c > 0) {
+						SameLine();
+					}
+					Changed(RadioButton(Id(Settings::kPrecisionChoiceNames[c], row.english).c_str(), row.value, c));
+				}
+				Unindent();
+			}
+			TextColored(kDim, "%s", T("Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all)."));
+			TextColored(kDim, "%s", T("Precision only: Precision's own settings decide (its trails can be switched off in its menu)."));
+
+			Heading("In your hands");
+			const auto                           st = Trails::GetStatus();
+			constexpr std::array<const char*, 2> kHands{ "Right hand:", "Left hand:" };
+			bool                                 any = false;
+			for (std::size_t k = 0; k < 2; ++k) {
+				const auto& h = st.hands[k];
+				if (!h.weapon || h.fist) {
+					continue;
+				}
+				any = true;
+				const int choice = Precision::Found() ? (h.colored ? s.precisionEnchanted : s.precisionPlain) : Settings::kOwnTrails;
+				Text("%s", T(kHands[k]));
+				SameLine();
+				Text("%s", h.name.c_str());
+				SameLine();
+				TextDisabled("%s", T(h.colored ? "enchanted" : "no enchantment"));
+				SameLine();
+				constexpr std::array<const char*, Settings::kPrecisionChoices> kDrawn{ "both trails", "Attack Trails' trail", "Precision's trail" };
+				TextColored(kGood, "%s", T(kDrawn[static_cast<std::size_t>(choice)]));
+			}
+			if (!any) {
+				TextColored(kDim, "%s", T("no weapon drawn"));
 			}
 			SaveIfDue();
 		}

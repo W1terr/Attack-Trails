@@ -128,5 +128,22 @@
 	"Other enchantments": "Andere Verzauberungen",
 	"All weapons": "Alle Waffen",
 	"Unique weapons only": "Nur einzigartige Waffen",
-	"Only the weapons in the list": "Nur die Waffen in der Liste"
+	"Only the weapons in the list": "Nur die Waffen in der Liste",
+	"Precision": "Precision",
+	"Precision draws trails of its own on weapon swings. Choose which mod draws them, for weapons without an enchantment and for enchanted ones: the other mod's trail is left out. Fists and arrows only have these trails.": "Precision zeichnet bei Waffenschwüngen eigene Spuren. Wähle, welche Mod sie zeichnet, für Waffen ohne Verzauberung und für verzauberte: Die Spur der anderen Mod entfällt. Fäuste und Pfeile haben nur diese Spuren.",
+	"Precision is not loaded: these choices do nothing.": "Precision ist nicht geladen: Diese Auswahl bewirkt nichts.",
+	"Which trails": "Welche Spuren",
+	"Weapons without enchantment": "Waffen ohne Verzauberung",
+	"Enchanted weapons": "Verzauberte Waffen",
+	"Bound and ghost weapons count as enchanted, and so do weapons of the weapon list with a color of their own.": "Gebundene Waffen und Geisterwaffen zählen als verzaubert, ebenso Waffen der Waffenliste mit eigener Farbe.",
+	"Attack Trails only: Precision's trails are hidden, and these follow the other pages (a normal attack with Normal attacks too off leaves no trail at all).": "Nur Attack Trails: Die Spuren von Precision werden ausgeblendet, und diese folgen den anderen Seiten (ein normaler Angriff ohne „Auch normale Angriffe“ hinterlässt gar keine Spur).",
+	"Precision only: Precision's own settings decide (its trails can be switched off in its menu).": "Nur Precision: Die Einstellungen von Precision entscheiden (seine Spuren lassen sich in seinem Menü ausschalten).",
+	"enchanted": "verzaubert",
+	"no enchantment": "ohne Verzauberung",
+	"both trails": "beide Spuren",
+	"Attack Trails' trail": "Spur von Attack Trails",
+	"Precision's trail": "Spur von Precision",
+	"Both": "Beide",
+	"Attack Trails only": "Nur Attack Trails",
+	"Precision only": "Nur Precision"
 }
